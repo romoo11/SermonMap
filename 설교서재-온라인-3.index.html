@@ -1,0 +1,1998 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>설교 서재</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='0.9em' font-size='90'>📖</text></svg>" />
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/fflate/0.8.2/index.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<style>
+html,body{margin:0;padding:0}
+#boot{font-family:sans-serif;color:#7b8794;text-align:center;padding:60px 20px;font-size:14px}
+</style>
+</head>
+<body>
+<div id="root"><div id="boot">설교 서재를 여는 중… (인터넷 연결이 필요합니다)</div></div>
+<script type="text/babel" data-presets="react">
+/* ═══════════ 관리자 설정 — 아래 두 줄만 채우면 됩니다 ═══════════
+   Supabase 프로젝트 → Settings → API 에서 복사해 붙여넣으세요.
+   자세한 방법은 함께 드린 '설치 안내' 문서를 따라 하시면 됩니다.  */
+const SUPABASE_URL = "https://bnfjpkbpjbkuaidysclq.supabase.co";
+const SUPABASE_ANON_KEY = "sb_publishable_yeMSSGWEb8G_SebUwf4r1Q_swsWOKW0";
+/* ═══════════════════════════════════════════════════════════════ */
+const sb = (SUPABASE_URL && SUPABASE_ANON_KEY && window.supabase)
+  ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
+  : null;
+
+const { useState, useEffect, useMemo } = React;
+const mammoth = window.mammoth;
+const API_KEY_STORAGE = "sermon-archive-apikey";
+
+/* ── 성경 66권 (장 수 포함) ─────────────────────────────── */
+const BOOKS = [
+  ["창세기",50],["출애굽기",40],["레위기",27],["민수기",36],["신명기",34],
+  ["여호수아",24],["사사기",21],["룻기",4],["사무엘상",31],["사무엘하",24],
+  ["열왕기상",22],["열왕기하",25],["역대상",29],["역대하",36],["에스라",10],
+  ["느헤미야",13],["에스더",10],["욥기",42],["시편",150],["잠언",31],
+  ["전도서",12],["아가",8],["이사야",66],["예레미야",52],["예레미야애가",5],
+  ["에스겔",48],["다니엘",12],["호세아",14],["요엘",3],["아모스",9],
+  ["오바댜",1],["요나",4],["미가",7],["나훔",3],["하박국",3],
+  ["스바냐",3],["학개",2],["스가랴",14],["말라기",4],
+  ["마태복음",28],["마가복음",16],["누가복음",24],["요한복음",21],["사도행전",28],
+  ["로마서",16],["고린도전서",16],["고린도후서",13],["갈라디아서",6],["에베소서",6],
+  ["빌립보서",4],["골로새서",4],["데살로니가전서",5],["데살로니가후서",3],
+  ["디모데전서",6],["디모데후서",4],["디도서",3],["빌레몬서",1],["히브리서",13],
+  ["야고보서",5],["베드로전서",5],["베드로후서",3],["요한일서",5],["요한이서",1],
+  ["요한삼서",1],["유다서",1],["요한계시록",22],
+];
+const OT_COUNT = 39;
+const BOOK_NAMES = BOOKS.map((b) => b[0]);
+const TOTAL_CHAPTERS = BOOKS.reduce((s, b) => s + b[1], 0);
+
+const SEASONS = [
+  "일반", "대림절", "성탄절", "주현절", "사순절", "고난주간", "부활절",
+  "성령강림절", "창조절", "맥추감사절", "추수감사절", "종교개혁주일",
+  "신년/송구영신", "특별집회/부흥회",
+];
+/* 절기 지도 표시 순서: 교회력 순 (일반은 마지막) */
+const SEASON_ORDER = [
+  "대림절", "성탄절", "주현절", "사순절", "고난주간", "부활절",
+  "성령강림절", "창조절", "맥추감사절", "추수감사절", "종교개혁주일",
+  "신년/송구영신", "특별집회/부흥회", "일반",
+];
+
+const STORAGE_KEY = "sermon-archive-v1";
+const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+
+/* ── 주제 대분류 (브레인스토밍 가지의 큰 틀) ── */
+const TOPIC_CATEGORIES = [
+  { name: "가정", keys: ["가정", "부모", "자녀", "부부", "효", "결혼"] },
+  { name: "감사", keys: ["감사", "감격", "추수"] },
+  { name: "고난", keys: ["고난", "시험", "시련", "역경", "환난", "인내", "광야", "연단"] },
+  { name: "교회", keys: ["교회", "공동체", "지체", "연합", "봉사", "섬김", "직분", "협력"] },
+  { name: "구원", keys: ["구원", "십자가", "대속", "칭의", "거듭남", "중생", "영생", "속죄"] },
+  { name: "기도", keys: ["기도", "간구", "중보", "금식", "응답", "부르짖"] },
+  { name: "말씀", keys: ["말씀", "성경", "진리", "묵상", "계시"] },
+  { name: "믿음", keys: ["믿음", "신뢰", "확신", "의심", "신앙"] },
+  { name: "사랑", keys: ["사랑", "용서", "긍휼", "자비", "이웃", "화해", "화목"] },
+  { name: "성령", keys: ["성령", "은사", "충만", "열매", "임재"] },
+  { name: "성화", keys: ["성화", "거룩", "경건", "성장", "변화", "겸손", "지혜", "청지기", "절제", "정직"] },
+  { name: "소망", keys: ["소망", "희망", "천국", "재림", "종말", "부활", "영광"] },
+  { name: "순종", keys: ["순종", "헌신", "결단", "제자", "사명", "부르심", "소명", "충성"] },
+  { name: "예배", keys: ["예배", "찬양", "경배", "안식", "절기"] },
+  { name: "은혜", keys: ["은혜", "축복", "복", "자족", "회복", "치유", "위로", "평안", "기쁨"] },
+  { name: "전도", keys: ["전도", "선교", "복음", "증인", "잃은"] },
+  { name: "회개", keys: ["회개", "죄", "돌이킴", "겸비"] },
+];
+
+function categorizeTags(tagList) {
+  /* tagList: [[tag, count], ...] → 가나다순 대분류 트리 */
+  const groups = new Map();
+  const misc = [];
+  for (const [t, c] of tagList) {
+    let placed = false;
+    /* 대분류 이름과 정확히 같으면 그 분류로 */
+    for (const cat of TOPIC_CATEGORIES) {
+      if (t === cat.name) { placed = true; if (!groups.has(cat.name)) groups.set(cat.name, []); groups.get(cat.name).push({ t, c }); break; }
+    }
+    if (!placed) {
+      for (const cat of TOPIC_CATEGORIES) {
+        if (cat.keys.some((k) => t.includes(k) || (k.length >= 2 && k.includes(t)))) {
+          placed = true;
+          if (!groups.has(cat.name)) groups.set(cat.name, []);
+          groups.get(cat.name).push({ t, c });
+          break;
+        }
+      }
+    }
+    if (!placed) misc.push({ t, c });
+  }
+  const result = [...groups.entries()]
+    .map(([name, tags]) => ({
+      name,
+      tags: tags.sort((a, b) => a.t.localeCompare(b.t, "ko")),
+      count: tags.reduce((s, x) => s + x.c, 0),
+    }))
+    .sort((a, b) => a.name.localeCompare(b.name, "ko"));
+  if (misc.length) {
+    result.push({
+      name: "기타",
+      tags: misc.sort((a, b) => a.t.localeCompare(b.t, "ko")),
+      count: misc.reduce((s, x) => s + x.c, 0),
+    });
+  }
+  return result;
+}
+
+/* ── ZIP 해제 (HWPX용, 브라우저 내장 압축 해제 사용) ───── */
+async function unzip(buf) {
+  const view = new DataView(buf);
+  const bytes = new Uint8Array(buf);
+  let eocd = -1;
+  for (let i = buf.byteLength - 22; i >= Math.max(0, buf.byteLength - 65558); i--) {
+    if (view.getUint32(i, true) === 0x06054b50) { eocd = i; break; }
+  }
+  if (eocd < 0) throw new Error("zip format");
+  const count = view.getUint16(eocd + 10, true);
+  let off = view.getUint32(eocd + 16, true);
+  const files = {};
+  for (let n = 0; n < count; n++) {
+    if (view.getUint32(off, true) !== 0x02014b50) break;
+    const method = view.getUint16(off + 10, true);
+    const csize = view.getUint32(off + 20, true);
+    const nameLen = view.getUint16(off + 28, true);
+    const extraLen = view.getUint16(off + 30, true);
+    const commentLen = view.getUint16(off + 32, true);
+    const localOff = view.getUint32(off + 42, true);
+    const name = new TextDecoder().decode(bytes.slice(off + 46, off + 46 + nameLen));
+    files[name] = { method, csize, localOff };
+    off += 46 + nameLen + extraLen + commentLen;
+  }
+  const read = async (name) => {
+    const f = files[name];
+    if (!f) return null;
+    const lo = f.localOff;
+    const nLen = view.getUint16(lo + 26, true);
+    const eLen = view.getUint16(lo + 28, true);
+    const start = lo + 30 + nLen + eLen;
+    const data = bytes.slice(start, start + f.csize);
+    if (f.method === 0) return data;
+    const ds = new DecompressionStream("deflate-raw");
+    const stream = new Blob([data]).stream().pipeThrough(ds);
+    return new Uint8Array(await new Response(stream).arrayBuffer());
+  };
+  return { names: Object.keys(files), read };
+}
+
+/* ── HWPX 본문 추출 ── */
+function loadFflate() {
+  return new Promise((resolve, reject) => {
+    if (window.fflate) return resolve(window.fflate);
+    const s = document.createElement("script");
+    s.src = "https://cdnjs.cloudflare.com/ajax/libs/fflate/0.8.2/index.min.js";
+    s.onload = () => resolve(window.fflate);
+    s.onerror = () => reject(new Error("압축 해제 모듈을 불러오지 못했습니다"));
+    document.head.appendChild(s);
+  });
+}
+
+async function extractHwpx(buf) {
+  /* 1) fflate로 압축 해제, 실패 시 자체 해제로 폴백 */
+  let entries = [];
+  try {
+    const fflate = await loadFflate();
+    const unzipped = fflate.unzipSync(new Uint8Array(buf));
+    entries = Object.keys(unzipped).map((n) => ({ name: n, read: async () => unzipped[n] }));
+  } catch (e) {
+    const zip = await unzip(buf);
+    entries = zip.names.map((n) => ({ name: n, read: () => zip.read(n) }));
+  }
+  if (!entries.length) throw new Error("압축을 풀지 못했습니다");
+
+  /* 2) 본문 XML 찾기 (표준 위치 → 넓은 탐색 순) */
+  let sections = entries.filter((e) => /^Contents\/section\d+\.xml$/i.test(e.name));
+  if (!sections.length) sections = entries.filter((e) => /section\d+\.xml$/i.test(e.name));
+  if (!sections.length) sections = entries.filter((e) => /^Contents\/.+\.xml$/i.test(e.name));
+  if (!sections.length) throw new Error("본문 XML을 찾지 못했습니다 (HWPX 형식이 맞는지 확인해 주세요)");
+  sections.sort((a, b) => a.name.localeCompare(b.name));
+
+  /* 3) 문단(p) 안의 글자(t) 추출 */
+  const parts = [];
+  for (const s of sections) {
+    const data = await s.read();
+    const xml = new TextDecoder("utf-8").decode(data);
+    const doc = new DOMParser().parseFromString(xml, "application/xml");
+    const all = doc.getElementsByTagName("*");
+    const lines = [];
+    for (let i = 0; i < all.length; i++) {
+      if (all[i].localName === "p") {
+        let t = "";
+        const inner = all[i].getElementsByTagName("*");
+        for (let j = 0; j < inner.length; j++) {
+          if (inner[j].localName === "t") t += inner[j].textContent;
+        }
+        if (t.trim()) lines.push(t.trim());
+      }
+    }
+    if (!lines.length) {
+      for (let i = 0; i < all.length; i++) {
+        if (all[i].localName === "t" && all[i].textContent.trim()) lines.push(all[i].textContent.trim());
+      }
+    }
+    if (lines.length) parts.push(lines.join("\n"));
+  }
+  const text = parts.join("\n\n").trim();
+  if (!text) throw new Error("파일에서 글자를 찾지 못했습니다");
+  return text;
+}
+
+/* ── PDF 본문 추출 (pdf.js 동적 로드) ── */
+function loadPdfJs() {
+  return new Promise((resolve, reject) => {
+    if (window.pdfjsLib) return resolve(window.pdfjsLib);
+    const s = document.createElement("script");
+    s.src = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js";
+    s.onload = () => {
+      window.pdfjsLib.GlobalWorkerOptions.workerSrc =
+        "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+      resolve(window.pdfjsLib);
+    };
+    s.onerror = () => reject(new Error("pdf.js load"));
+    document.head.appendChild(s);
+  });
+}
+
+async function extractPdf(buf) {
+  const pdfjs = await loadPdfJs();
+  const doc = await pdfjs.getDocument({
+    data: new Uint8Array(buf),
+    disableFontFace: true,
+    isEvalSupported: false,
+  }).promise;
+  const parts = [];
+  for (let p = 1; p <= doc.numPages; p++) {
+    try {
+      const page = await doc.getPage(p);
+      const tc = await page.getTextContent();
+      parts.push(tc.items.map((i) => i.str).join(" "));
+    } catch (e) {
+      /* 일부 페이지 실패는 건너뜀 */
+    }
+  }
+  return parts.join("\n\n").trim();
+}
+
+/* ── 형식별 파일 읽기 (일괄 등록용) ── */
+async function readFileText(file) {
+  const lower = file.name.toLowerCase();
+  if (lower.endsWith(".docx")) {
+    const buf = await file.arrayBuffer();
+    const r = await mammoth.extractRawText({ arrayBuffer: buf });
+    return (r.value || "").trim();
+  }
+  if (lower.endsWith(".txt")) return (await file.text()).trim();
+  if (lower.endsWith(".hwpx")) {
+    const buf = await file.arrayBuffer();
+    return await extractHwpx(buf);
+  }
+  if (lower.endsWith(".pdf")) {
+    const buf = await file.arrayBuffer();
+    return await extractPdf(buf);
+  }
+  if (lower.endsWith(".hwp")) throw new Error("HWP_UNSUPPORTED");
+  throw new Error("FORMAT_UNSUPPORTED");
+}
+
+/* ── 성경 이름 정규화 (약어·이형 표기 → 정식 명칭) ── */
+const BOOK_ALIASES = {
+  "창":"창세기","출":"출애굽기","레":"레위기","민":"민수기","신":"신명기","수":"여호수아","삿":"사사기","룻":"룻기",
+  "삼상":"사무엘상","삼하":"사무엘하","왕상":"열왕기상","왕하":"열왕기하","대상":"역대상","대하":"역대하",
+  "스":"에스라","느":"느헤미야","에":"에스더","욥":"욥기","시":"시편","잠":"잠언","전":"전도서","아":"아가",
+  "사":"이사야","렘":"예레미야","애":"예레미야애가","겔":"에스겔","단":"다니엘","호":"호세아","욜":"요엘",
+  "암":"아모스","옵":"오바댜","욘":"요나","미":"미가","나":"나훔","합":"하박국","습":"스바냐","학":"학개",
+  "슥":"스가랴","말":"말라기","마":"마태복음","막":"마가복음","눅":"누가복음","요":"요한복음","행":"사도행전",
+  "롬":"로마서","고전":"고린도전서","고후":"고린도후서","갈":"갈라디아서","엡":"에베소서","빌":"빌립보서",
+  "골":"골로새서","살전":"데살로니가전서","살후":"데살로니가후서","딤전":"디모데전서","딤후":"디모데후서",
+  "딛":"디도서","몬":"빌레몬서","히":"히브리서","약":"야고보서","벧전":"베드로전서","벧후":"베드로후서",
+  "요일":"요한일서","요이":"요한이서","요삼":"요한삼서","유":"유다서","계":"요한계시록",
+  "계시록":"요한계시록","애가":"예레미야애가","출애굽":"출애굽기","마태":"마태복음","마가":"마가복음",
+  "누가":"누가복음","시편":"시편",
+};
+
+function normalizeBook(raw) {
+  if (!raw) return "";
+  const s = String(raw).replace(/\s/g, "").replace(/복음서$/, "복음");
+  if (BOOK_NAMES.includes(s)) return s;
+  if (BOOK_ALIASES[s]) return BOOK_ALIASES[s];
+  for (const b of BOOK_NAMES) if (s.startsWith(b)) return b;
+  return "";
+}
+
+/* ── AI 없이 본문 말씀 찾기 (문서 앞부분에서 '책이름 3:16' 패턴 탐색) ── */
+function detectScripture(text) {
+  const head = (text || "").slice(0, 1500);
+  const names = [...BOOK_NAMES, ...Object.keys(BOOK_ALIASES)].sort((a, b) => b.length - a.length);
+  for (const n of names) {
+    let from = 0;
+    while (true) {
+      const idx = head.indexOf(n, from);
+      if (idx < 0) break;
+      const after = head.slice(idx + n.length, idx + n.length + 30);
+      const m = after.match(/^\s*(\d{1,3})\s*[:장편]\s*(\d{1,3})(\s*[-~]\s*(\d{1,3}))?/);
+      if (m) {
+        const book = normalizeBook(n);
+        if (book) return { book, ref: `${m[1]}:${m[2]}${m[4] ? "-" + m[4] : ""}` };
+      }
+      from = idx + 1;
+    }
+  }
+  return null;
+}
+
+/* ── AI 분석 + 자동 재시도 (요청 몰림·일시 오류 대응) ── */
+async function aiExtractRetry(text, tries = 3) {
+  let lastErr = null;
+  for (let a = 0; a < tries; a++) {
+    try {
+      return await aiExtract(text);
+    } catch (e) {
+      lastErr = e;
+      const msg = (e && e.message) || "";
+      const retriable = /429|529|500|overloaded|rate|응답 오류|비어/i.test(msg);
+      if (a < tries - 1 && retriable) {
+        await new Promise((r) => setTimeout(r, 4000 * (a + 1)));
+        continue;
+      }
+      throw e;
+    }
+  }
+  throw lastErr;
+}
+
+/* ── 파일명·본문에서 날짜 추출 (AI 없이 즉시) ── */
+function guessDate(fileName, text) {
+  const src = (fileName || "") + "\n" + (text || "").slice(0, 800);
+  let m = src.match(/(20\d{2})\s*[.\-\/년]\s*(\d{1,2})\s*[.\-\/월]\s*(\d{1,2})/);
+  if (m) {
+    const mo = +m[2], d = +m[3];
+    if (mo >= 1 && mo <= 12 && d >= 1 && d <= 31)
+      return `${m[1]}-${String(mo).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+  }
+  m = src.match(/(20\d{2})(\d{2})(\d{2})/);
+  if (m) {
+    const mo = +m[2], d = +m[3];
+    if (mo >= 1 && mo <= 12 && d >= 1 && d <= 31) return `${m[1]}-${m[2]}-${m[3]}`;
+  }
+  return "";
+}
+
+/* ── AI 분석 (설교문 → 메타데이터 JSON) ── */
+async function aiExtract(text) {
+  const prompt = `다음은 설교문입니다. 내용을 분석해 아래 형식의 JSON 객체만 출력하세요. 마크다운 코드 블록이나 다른 설명 없이 JSON만 출력합니다.
+{
+  "title": "설교 제목 (문서에 명시된 제목이 있으면 그대로, 없으면 내용에 어울리는 제목)",
+  "date": "설교 날짜 YYYY-MM-DD 형식 (문서에서 확인되는 경우만, 없으면 빈 문자열)",
+  "book": "주 본문 성경 이름. 반드시 다음 중 하나여야 함: ${BOOK_NAMES.join(", ")}. 없으면 빈 문자열",
+  "ref": "장절 표기, 예: 3:16-20 (없으면 빈 문자열)",
+  "season": "교회 절기. 반드시 다음 중 하나: ${SEASONS.join(", ")}",
+  "tags": ["핵심 주제 태그 3~5개, 각각 2~6자"],
+  "summary": "설교의 핵심 메시지 3~4문장 요약"
+}
+
+설교문:
+${text}`;
+  let key = "";
+  try { key = localStorage.getItem(API_KEY_STORAGE) || ""; } catch (e) {}
+  if (!key) throw new Error("AI 분석을 쓰려면 API 키를 등록해 주세요 (새 설교 화면 아래)");
+  const response = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-api-key": key,
+      "anthropic-version": "2023-06-01",
+      "anthropic-dangerous-direct-browser-access": "true",
+    },
+    body: JSON.stringify({
+      model: "claude-sonnet-4-6",
+      max_tokens: 1000,
+      messages: [{ role: "user", content: prompt }],
+    }),
+  });
+  let data = null;
+  try { data = await response.json(); } catch (e) { /* 비정상 응답 */ }
+  if (!response.ok || (data && data.error)) {
+    const msg = data && data.error && data.error.message
+      ? data.error.message
+      : "응답 오류 (" + response.status + ")";
+    throw new Error(msg);
+  }
+  if (!data || !Array.isArray(data.content)) throw new Error("응답이 비어 있습니다");
+  const raw = data.content.map((i) => (i && i.text) || "").join("\n");
+  const a = raw.indexOf("{");
+  const b = raw.lastIndexOf("}");
+  if (a < 0 || b <= a) throw new Error("분석 결과 형식 오류");
+  return JSON.parse(raw.slice(a, b + 1));
+}
+
+const EMPTY_FORM = {
+  title: "", date: "", book: "", ref: "", season: "일반",
+  tags: "", fileName: "", content: "", summary: "",
+};
+
+/* ── 커버리지 색 (설교 횟수 → 잉크 농도) ───────────────── */
+function heat(count, max) {
+  if (!count) return "var(--cell-empty)";
+  const t = Math.min(1, count / Math.max(1, max));
+  const light = 82 - t * 50; // 82% → 32%
+  return `hsl(215, 46%, ${light}%)`;
+}
+
+/* ── 초성 판별 및 초성별 교차 색상 (보라 ↔ 빨강) ───────── */
+const CHO = ["ㄱ","ㄱ","ㄴ","ㄷ","ㄷ","ㄹ","ㅁ","ㅂ","ㅂ","ㅅ","ㅅ","ㅇ","ㅈ","ㅈ","ㅊ","ㅋ","ㅌ","ㅍ","ㅎ"];
+function choseong(str) {
+  if (!str) return "";
+  const c = str.charCodeAt(0) - 0xac00;
+  if (c < 0 || c > 11171) return str[0];
+  return CHO[Math.floor(c / 588)];
+}
+const HUE_GREEN = 163; /* 에메랄드 녹색 */
+const HUE_BLUE = 224;  /* 파랑 */
+function heatHue(count, max, hue) {
+  if (!count) return "var(--cell-empty)";
+  const t = Math.min(1, count / Math.max(1, max));
+  const light = 84 - t * 46; // 84% → 38%
+  return `hsl(${hue}, ${hue === HUE_GREEN ? 60 : 52}%, ${light}%)`;
+}
+/* 가나다순 이름 목록 → 초성이 바뀔 때마다 에메랄드/파랑 교차 배정 */
+function alternateHues(names) {
+  const hues = [];
+  let idx = 0;
+  let prev = null;
+  for (const n of names) {
+    const c = choseong(n);
+    if (prev !== null && c !== prev) idx = 1 - idx;
+    hues.push(idx === 0 ? HUE_GREEN : HUE_BLUE);
+    prev = c;
+  }
+  return hues;
+}
+
+
+/* ── 온라인 계정 (Supabase) ───────────────────────────── */
+/* 기록 ↔ 서버 행 변환 */
+function rowFrom(r, scope, authorName) {
+  return {
+    scope: scope || r.scope || "personal",
+    author_name: authorName || "",
+    title: r.title || "",
+    date: r.date || "",
+    book: r.book || "",
+    ref: r.ref || "",
+    season: r.season || "일반",
+    tags: Array.isArray(r.tags) ? r.tags : [],
+    file_name: r.fileName || "",
+    content: r.content || "",
+    summary: r.summary || "",
+  };
+}
+function recFrom(row, myId) {
+  return {
+    id: row.id,
+    title: row.title || "",
+    date: row.date || "",
+    book: row.book || "",
+    ref: row.ref || "",
+    season: row.season || "일반",
+    tags: Array.isArray(row.tags) ? row.tags : [],
+    fileName: row.file_name || "",
+    content: row.content || "",
+    summary: row.summary || "",
+    scope: row.scope || "personal",
+    mine: row.user_id === myId,
+    author: row.author_name || "",
+  };
+}
+
+function SetupScreen() {
+  return (
+    <div className="app">
+      <style>{CSS}</style>
+      <div className="auth-wrap">
+        <div className="auth-card">
+          <div className="auth-brand">
+            <span className="brand-mark">≡</span>
+            <h1>설교 서재</h1>
+            <p>초기 설정이 필요합니다</p>
+          </div>
+          <p className="auth-hint" style={{ lineHeight: 1.8 }}>
+            아직 서버(Supabase) 연결 정보가 입력되지 않았습니다.<br />
+            함께 제공된 <b>설치 안내 문서</b>를 따라 Supabase 프로젝트를 만든 뒤,<br />
+            이 파일을 메모장으로 열어 맨 위의 <b>SUPABASE_URL</b>과 <b>SUPABASE_ANON_KEY</b> 두 줄을 채워주세요.
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function LoginScreen() {
+  const [mode, setMode] = useState("login"); /* login | signup | reset */
+  const [email, setEmail] = useState("");
+  const [name, setName] = useState("");
+  const [pw, setPw] = useState("");
+  const [pw2, setPw2] = useState("");
+  const [err, setErr] = useState("");
+  const [info, setInfo] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const doLogin = async () => {
+    setErr(""); setInfo(""); setBusy(true);
+    const { error } = await sb.auth.signInWithPassword({ email: email.trim(), password: pw });
+    setBusy(false);
+    if (error) setErr(error.message === "Invalid login credentials" ? "이메일 또는 비밀번호가 올바르지 않습니다." : "로그인 실패: " + error.message);
+  };
+  const doSignup = async () => {
+    setErr(""); setInfo("");
+    if (!email.trim().includes("@")) { setErr("올바른 이메일을 입력해 주세요."); return; }
+    if (name.trim().length < 2) { setErr("이름(표시명)은 2자 이상으로 정해주세요."); return; }
+    if (pw.length < 6) { setErr("비밀번호는 6자 이상으로 정해주세요."); return; }
+    if (pw !== pw2) { setErr("비밀번호 확인이 일치하지 않습니다."); return; }
+    setBusy(true);
+    const { data, error } = await sb.auth.signUp({
+      email: email.trim(), password: pw,
+      options: { data: { display_name: name.trim() } },
+    });
+    setBusy(false);
+    if (error) { setErr("가입 실패: " + error.message); return; }
+    if (data && !data.session) setInfo("확인 이메일을 보냈습니다. 메일함에서 링크를 눌러 가입을 완료한 뒤 로그인해 주세요.");
+  };
+  const doReset = async () => {
+    setErr(""); setInfo("");
+    if (!email.trim().includes("@")) { setErr("가입한 이메일을 입력해 주세요."); return; }
+    setBusy(true);
+    const { error } = await sb.auth.resetPasswordForEmail(email.trim(), { redirectTo: window.location.href.split("#")[0] });
+    setBusy(false);
+    if (error) setErr("메일 발송 실패: " + error.message);
+    else setInfo("비밀번호 재설정 메일을 보냈습니다. 메일의 링크를 눌러 이 페이지로 돌아오면 새 비밀번호를 정할 수 있습니다.");
+  };
+  const submit = (e) => {
+    if (e.key !== "Enter") return;
+    if (mode === "login") doLogin(); else if (mode === "signup") doSignup(); else doReset();
+  };
+
+  return (
+    <div className="app">
+      <style>{CSS}</style>
+      <div className="auth-wrap">
+        <div className="auth-card">
+          <div className="auth-brand">
+            <span className="brand-mark">≡</span>
+            <h1>설교 서재</h1>
+            <p>말씀의 기록과 흐름을 한 곳에</p>
+          </div>
+          <div className="auth-tabs">
+            <button className={mode === "login" ? "on" : ""} onClick={() => { setMode("login"); setErr(""); setInfo(""); }}>로그인</button>
+            <button className={mode === "signup" ? "on" : ""} onClick={() => { setMode("signup"); setErr(""); setInfo(""); }}>계정 만들기</button>
+          </div>
+          <label className="field"><span>이메일</span>
+            <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} onKeyDown={submit} autoFocus />
+          </label>
+          {mode === "signup" && (
+            <label className="field"><span>이름 (공동 서재에 표시될 이름)</span>
+              <input value={name} onChange={(e) => setName(e.target.value)} onKeyDown={submit} />
+            </label>
+          )}
+          {mode !== "reset" && (
+            <label className="field"><span>비밀번호</span>
+              <input type="password" value={pw} onChange={(e) => setPw(e.target.value)} onKeyDown={submit} />
+            </label>
+          )}
+          {mode === "signup" && (
+            <label className="field"><span>비밀번호 확인</span>
+              <input type="password" value={pw2} onChange={(e) => setPw2(e.target.value)} onKeyDown={submit} />
+            </label>
+          )}
+          {err && <p className="auth-err">{err}</p>}
+          {info && <p className="auth-hint">{info}</p>}
+          <button className="primary auth-submit" disabled={busy}
+            onClick={mode === "login" ? doLogin : mode === "signup" ? doSignup : doReset}>
+            {busy ? "처리 중…" : mode === "login" ? "로그인" : mode === "signup" ? "계정 만들기" : "재설정 메일 보내기"}
+          </button>
+          {mode === "login" && (
+            <p className="auth-note">
+              비밀번호를 잊으셨나요?{" "}
+              <button className="batch-link" onClick={() => { setMode("reset"); setErr(""); setInfo(""); }}>비밀번호 재설정</button>
+            </p>
+          )}
+          {mode === "reset" && (
+            <p className="auth-note">
+              <button className="batch-link" onClick={() => { setMode("login"); setErr(""); setInfo(""); }}>← 로그인으로 돌아가기</button>
+            </p>
+          )}
+          <p className="auth-note">계정 하나로 컴퓨터·휴대폰 어디서나 같은 기록을 사용할 수 있습니다.</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function NewPasswordScreen({ onDone }) {
+  const [pw, setPw] = useState("");
+  const [pw2, setPw2] = useState("");
+  const [err, setErr] = useState("");
+  const [busy, setBusy] = useState(false);
+  const save = async () => {
+    setErr("");
+    if (pw.length < 6) { setErr("비밀번호는 6자 이상으로 정해주세요."); return; }
+    if (pw !== pw2) { setErr("비밀번호 확인이 일치하지 않습니다."); return; }
+    setBusy(true);
+    const { error } = await sb.auth.updateUser({ password: pw });
+    setBusy(false);
+    if (error) { setErr("변경 실패: " + error.message); return; }
+    onDone();
+  };
+  return (
+    <div className="app">
+      <style>{CSS}</style>
+      <div className="auth-wrap">
+        <div className="auth-card">
+          <div className="auth-brand">
+            <span className="brand-mark">≡</span>
+            <h1>새 비밀번호 설정</h1>
+          </div>
+          <label className="field"><span>새 비밀번호</span>
+            <input type="password" value={pw} onChange={(e) => setPw(e.target.value)} autoFocus />
+          </label>
+          <label className="field"><span>새 비밀번호 확인</span>
+            <input type="password" value={pw2} onChange={(e) => setPw2(e.target.value)} />
+          </label>
+          {err && <p className="auth-err">{err}</p>}
+          <button className="primary auth-submit" disabled={busy} onClick={save}>{busy ? "처리 중…" : "비밀번호 변경"}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function AuthGate() {
+  const [session, setSession] = useState(undefined);
+  const [recovery, setRecovery] = useState(false);
+  useEffect(() => {
+    if (!sb) return;
+    sb.auth.getSession().then(({ data }) => setSession(data.session || null));
+    const { data: sub } = sb.auth.onAuthStateChange((event, sess) => {
+      setSession(sess || null);
+      if (event === "PASSWORD_RECOVERY") setRecovery(true);
+    });
+    return () => sub.subscription.unsubscribe();
+  }, []);
+  if (!sb) return <SetupScreen />;
+  if (session === undefined) {
+    return (
+      <div className="app"><style>{CSS}</style>
+        <div className="auth-wrap"><p className="muted">불러오는 중…</p></div>
+      </div>
+    );
+  }
+  if (recovery && session) return <NewPasswordScreen onDone={() => setRecovery(false)} />;
+  if (!session) return <LoginScreen />;
+  const u = session.user;
+  const profileName = (u.user_metadata && u.user_metadata.display_name) || u.email;
+  return (
+    <SermonArchive
+      user={u}
+      profileName={profileName}
+      onLogout={() => sb.auth.signOut()}
+    />
+  );
+}
+
+function SermonArchive({ user, profileName, onLogout }) {
+  const [sermons, setSermons] = useState([]);
+  const [library, setLibrary] = useState("personal"); /* personal | shared */
+  const [saveScope, setSaveScope] = useState("personal");
+  const [batchScope, setBatchScope] = useState("personal");
+  const [loaded, setLoaded] = useState(false);
+  const scoped = useMemo(
+    () => sermons.filter((s) => (s.scope || "personal") === library),
+    [sermons, library]
+  );
+  const [saveState, setSaveState] = useState("idle"); // idle | saving | error
+  const [apiKey, setApiKey] = useState(() => {
+    try { return localStorage.getItem(API_KEY_STORAGE) || ""; } catch (e) { return ""; }
+  });
+  const [keyInput, setKeyInput] = useState("");
+  const saveKey = () => {
+    const k = keyInput.trim();
+    if (!k) return;
+    try { localStorage.setItem(API_KEY_STORAGE, k); } catch (e) {}
+    setApiKey(k);
+    setKeyInput("");
+  };
+  const clearKey = () => {
+    try { localStorage.removeItem(API_KEY_STORAGE); } catch (e) {}
+    setApiKey("");
+  };
+  const [view, setView] = useState("list"); // list | form | map
+  const [editingId, setEditingId] = useState(null);
+  const [form, setForm] = useState(EMPTY_FORM);
+  const [query, setQuery] = useState("");
+  const [fYear, setFYear] = useState("전체");
+  const [fSeason, setFSeason] = useState("전체");
+  const [fTag, setFTag] = useState("전체");
+  const [openId, setOpenId] = useState(null);
+  const [mapBook, setMapBook] = useState(null);
+  const [confirmDel, setConfirmDel] = useState(null);
+  const [fileMsg, setFileMsg] = useState("");
+  const [analyzing, setAnalyzing] = useState(false);
+  const [aiError, setAiError] = useState("");
+
+  /* ── 파일 읽기 → 자동 분석까지 한 번에 ── */
+  const handleFile = async (e) => {
+    const file = e.target.files && e.target.files[0];
+    if (!file) return;
+    setFileMsg("");
+    setAiError("");
+    const name = file.name;
+    const lower = name.toLowerCase();
+    e.target.value = "";
+    try {
+      if (lower.endsWith(".hwp")) {
+        setForm((f) => ({ ...f, fileName: f.fileName || name, date: f.date || guessDate(name, "") }));
+        setFileMsg("일반 한글(.hwp) 파일은 브라우저에서 직접 읽을 수 없습니다. 한글 프로그램에서 '다른 이름으로 저장'으로 HWPX나 Word(.docx)로 저장한 뒤 올려주세요. 파일명과 날짜는 기록해 두었습니다.");
+        return;
+      }
+      if (!/\.(docx|txt|hwpx|pdf)$/.test(lower)) {
+        setFileMsg("지원하지 않는 형식입니다. 워드(.docx), 한글(.hwpx), PDF, 텍스트(.txt) 파일을 올려주세요.");
+        return;
+      }
+      setFileMsg("파일을 읽는 중…");
+      const text = await readFileText(file);
+      if (!text) {
+        setForm((f) => ({ ...f, fileName: f.fileName || name, date: f.date || guessDate(name, "") }));
+        setFileMsg("이 파일에서 글자를 찾지 못했습니다. 스캔본(이미지) PDF일 수 있으니 내용을 직접 붙여넣어 주세요.");
+        return;
+      }
+      const det = detectScripture(text);
+      setForm((f) => ({
+        ...f,
+        fileName: f.fileName || name,
+        content: text,
+        date: f.date || guessDate(name, text),
+        book: f.book || (det ? det.book : ""),
+        ref: f.ref.trim() ? f.ref : (det ? det.ref : ""),
+      }));
+      setFileMsg("내용을 불러왔습니다. 이어서 자동 분석 중…");
+      await runAnalysis(text);
+    } catch (err) {
+      setFileMsg(
+        "파일을 읽는 중 오류가 발생했습니다" +
+        (err && err.message && !/^[A-Z_]+$/.test(err.message) ? ` (${err.message})` : "") +
+        ". 내용을 직접 붙여넣거나 워드(.docx)로 변환해 보세요."
+      );
+    }
+  };
+
+  /* ── AI 자동 분석 (단일) ── */
+  const runAnalysis = async (text) => {
+    if (!text || !text.trim() || analyzing) return;
+    setAnalyzing(true);
+    setAiError("");
+    try {
+      const p = await aiExtractRetry(text.slice(0, 9000));
+      setForm((f) => ({
+        ...f,
+        title: f.title.trim() ? f.title : (p.title || ""),
+        date: f.date || (p.date || ""),
+        book: f.book || normalizeBook(p.book),
+        ref: f.ref.trim() ? f.ref : (p.ref || ""),
+        season: SEASONS.includes(p.season) ? p.season : f.season,
+        tags: f.tags.trim() ? f.tags : (Array.isArray(p.tags) ? p.tags.join(", ") : ""),
+        summary: p.summary || f.summary,
+      }));
+      setFileMsg("자동 분석이 끝났습니다. 채워진 내용을 확인하고 아래 '저장'을 눌러주세요.");
+    } catch (err) {
+      setAiError("자동 분석에 실패했습니다: " + (err && err.message ? err.message : "알 수 없는 오류") + " — 아래 'AI로 자동 분석' 버튼으로 다시 시도할 수 있습니다.");
+    }
+    setAnalyzing(false);
+  };
+
+  const analyze = () => runAnalysis(form.content);
+
+  /* ── 일괄 등록 ── */
+  const [batchItems, setBatchItems] = useState([]);
+  const [batchRunning, setBatchRunning] = useState(false);
+  const [batchUseAI, setBatchUseAI] = useState(true);
+  const [batchDone, setBatchDone] = useState(false);
+
+  const runBatch = async (files) => {
+    if (!files.length || batchRunning) return;
+    setBatchRunning(true);
+    setBatchDone(false);
+    setBatchItems(files.map((f) => ({ name: f.name, status: "대기", note: "" })));
+
+    const upd = (i, status, note) =>
+      setBatchItems((prev) => prev.map((it, j) => (j === i ? { ...it, status, note: note || it.note } : it)));
+
+    const newRecords = [];
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      try {
+        upd(i, "읽는 중");
+        const text = await readFileText(file);
+        const det = detectScripture(text || "");
+        let rec = {
+          id: uid(),
+          title: file.name.replace(/\.[^.]+$/, ""),
+          date: guessDate(file.name, text),
+          book: det ? det.book : "",
+          ref: det ? det.ref : "",
+          season: "일반",
+          tags: [], fileName: file.name, content: text || "", summary: "",
+        };
+        let note = "";
+        if (batchUseAI && text) {
+          upd(i, "AI 분석 중");
+          try {
+            const p = await aiExtractRetry(text.slice(0, 9000));
+            rec = {
+              ...rec,
+              title: p.title || rec.title,
+              date: p.date || rec.date,
+              book: normalizeBook(p.book) || rec.book,
+              ref: p.ref || rec.ref,
+              season: SEASONS.includes(p.season) ? p.season : "일반",
+              tags: Array.isArray(p.tags) ? p.tags : [],
+              summary: p.summary || "",
+            };
+          } catch (e) {
+            note = "분석 실패 — 내용만 저장됨";
+          }
+          if (i < files.length - 1) await new Promise((r) => setTimeout(r, 800));
+        } else if (batchUseAI && !text) {
+          note = "글자를 찾지 못해 파일명만 저장됨";
+        }
+        if (!note && !rec.book) note = "본문 말씀을 찾지 못함 — 수정에서 채워주세요";
+        newRecords.push(rec);
+        upd(i, "완료", note);
+      } catch (e) {
+        const msg =
+          e.message === "HWP_UNSUPPORTED" ? "HWP는 HWPX/워드로 변환 후 올려주세요"
+          : e.message === "FORMAT_UNSUPPORTED" ? "지원하지 않는 형식"
+          : "파일 읽기 실패";
+        upd(i, "실패", msg);
+      }
+    }
+    if (newRecords.length) {
+      await insertRecords(newRecords, batchScope);
+    }
+    setBatchRunning(false);
+    setBatchDone(true);
+  };
+
+  /* ── 불러오기 ── */
+  const fetchAll = async () => {
+    const { data, error } = await sb
+      .from("sermons")
+      .select("*")
+      .order("created_at", { ascending: false });
+    if (error) { setSaveState("error"); return; }
+    setSermons((data || []).map((row) => recFrom(row, user.id)));
+    setSaveState("idle");
+  };
+  useEffect(() => { fetchAll().then(() => setLoaded(true)); }, []);
+
+  /* ── 서버 저장 (Supabase) ── */
+  const insertRecords = async (recs, scope) => {
+    setSaveState("saving");
+    const rows = recs.map((r) => rowFrom(r, scope || r.scope, profileName));
+    const { data, error } = await sb.from("sermons").insert(rows).select();
+    if (error) { setSaveState("error"); return []; }
+    setSaveState("idle");
+    const news = (data || []).map((row) => recFrom(row, user.id));
+    setSermons((prev) => [...news, ...prev]);
+    return news;
+  };
+  const updateRecord = async (id, rec, scope) => {
+    setSaveState("saving");
+    const { data, error } = await sb
+      .from("sermons")
+      .update(rowFrom(rec, scope, profileName))
+      .eq("id", id)
+      .select();
+    if (error || !data || !data.length) { setSaveState("error"); return null; }
+    setSaveState("idle");
+    const upd = recFrom(data[0], user.id);
+    setSermons((prev) => prev.map((s) => (s.id === id ? upd : s)));
+    return upd;
+  };
+  const deleteRecord = async (id) => {
+    setSaveState("saving");
+    const { error } = await sb.from("sermons").delete().eq("id", id);
+    if (error) { setSaveState("error"); return; }
+    setSaveState("idle");
+    setSermons((prev) => prev.filter((s) => s.id !== id));
+  };
+
+  /* ── 파생 데이터 ── */
+  const years = useMemo(() => {
+    const ys = new Set(scoped.map((s) => (s.date || "").slice(0, 4)).filter(Boolean));
+    return ["전체", ...[...ys].sort().reverse()];
+  }, [scoped]);
+
+  const allTags = useMemo(() => {
+    const t = new Set();
+    scoped.forEach((s) => (s.tags || []).forEach((x) => t.add(x)));
+    return ["전체", ...[...t].sort()];
+  }, [scoped]);
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return scoped
+      .filter((s) => {
+        if (fYear !== "전체" && (s.date || "").slice(0, 4) !== fYear) return false;
+        if (fSeason !== "전체" && s.season !== fSeason) return false;
+        if (fTag !== "전체" && !(s.tags || []).includes(fTag)) return false;
+        if (!q) return true;
+        const hay = [
+          s.title, s.book, s.ref, s.fileName, s.content, s.summary,
+          (s.tags || []).join(" "), s.season,
+        ].join(" ").toLowerCase();
+        return hay.includes(q);
+      })
+      .sort((a, b) => (b.date || "").localeCompare(a.date || ""));
+  }, [scoped, query, fYear, fSeason, fTag]);
+
+  const bookCounts = useMemo(() => {
+    const m = {};
+    scoped.forEach((s) => { if (s.book) m[s.book] = (m[s.book] || 0) + 1; });
+    return m;
+  }, [scoped]);
+
+  const tagCounts = useMemo(() => {
+    const m = {};
+    scoped.forEach((s) => (s.tags || []).forEach((t) => { m[t] = (m[t] || 0) + 1; }));
+    return m;
+  }, [scoped]);
+  const [topicSel, setTopicSel] = useState(null); /* {kind:'tag'|'cat', name} */
+  const maxTag = Math.max(1, ...Object.values(tagCounts));
+  const tagList = useMemo(
+    () => Object.entries(tagCounts).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], "ko")),
+    [tagCounts]
+  );
+  const topicTree = useMemo(() => categorizeTags(tagList), [tagList]);
+  const maxCat = Math.max(1, ...topicTree.map((c) => c.count));
+  const catHues = useMemo(() => alternateHues(topicTree.map((c) => c.name)), [topicTree]);
+  const tagsKo = useMemo(
+    () => [...tagList].sort((a, b) => a[0].localeCompare(b[0], "ko")),
+    [tagList]
+  );
+  const tagHues = useMemo(() => alternateHues(tagsKo.map((x) => x[0])), [tagsKo]);
+
+  const seasonCounts = useMemo(() => {
+    const m = {};
+    scoped.forEach((s) => {
+      const k = s.season && SEASONS.includes(s.season) ? s.season : "일반";
+      m[k] = (m[k] || 0) + 1;
+    });
+    return m;
+  }, [scoped]);
+  const [seasonSel, setSeasonSel] = useState(null);
+  const maxSeason = Math.max(1, ...Object.values(seasonCounts));
+  const seasonalTotal = scoped.length - (seasonCounts["일반"] || 0);
+  const topSeason = useMemo(() => {
+    let best = null;
+    for (const s of SEASON_ORDER) {
+      if (s === "일반") continue;
+      if (seasonCounts[s] && (!best || seasonCounts[s] > seasonCounts[best])) best = s;
+    }
+    return best;
+  }, [seasonCounts]);
+  const topicSermons = useMemo(() => {
+    if (!topicSel) return [];
+    let match;
+    if (topicSel.kind === "tag") {
+      match = (s) => (s.tags || []).includes(topicSel.name);
+    } else {
+      const cat = topicTree.find((c) => c.name === topicSel.name);
+      const set = new Set(cat ? cat.tags.map((x) => x.t) : []);
+      match = (s) => (s.tags || []).some((t) => set.has(t));
+    }
+    return scoped.filter(match).sort((a, b) => (b.date || "").localeCompare(a.date || ""));
+  }, [topicSel, topicTree, scoped]);
+
+  const maxCount = Math.max(1, ...Object.values(bookCounts));
+  const coveredBooks = Object.keys(bookCounts).length;
+  const otSermons = scoped.filter((s) => BOOK_NAMES.indexOf(s.book) > -1 && BOOK_NAMES.indexOf(s.book) < OT_COUNT).length;
+  const ntSermons = scoped.filter((s) => BOOK_NAMES.indexOf(s.book) >= OT_COUNT).length;
+  const withBook = otSermons + ntSermons;
+
+  /* ── 폼 동작 ── */
+  const startNew = () => { setForm(EMPTY_FORM); setEditingId(null); setSaveScope(library); setView("form"); };
+  const startEdit = (s) => {
+    setForm({
+      title: s.title || "", date: s.date || "", book: s.book || "", ref: s.ref || "",
+      season: s.season || "일반", tags: (s.tags || []).join(", "),
+      fileName: s.fileName || "", content: s.content || "", summary: s.summary || "",
+    });
+    setEditingId(s.id);
+    setSaveScope(s.scope || "personal");
+    setView("form");
+  };
+
+  const saveForm = async () => {
+    if (!form.title.trim()) return;
+    const rec = {
+      title: form.title.trim(),
+      date: form.date,
+      book: form.book,
+      ref: form.ref.trim(),
+      season: form.season,
+      tags: form.tags.split(",").map((t) => t.trim()).filter(Boolean),
+      fileName: form.fileName.trim(),
+      content: form.content,
+      summary: form.summary.trim(),
+    };
+    if (editingId) {
+      const upd = await updateRecord(editingId, rec, saveScope);
+      if (upd) {
+        setLibrary(saveScope);
+        setView("list");
+        setOpenId(editingId);
+      }
+    } else {
+      const news = await insertRecords([rec], saveScope);
+      if (news.length) {
+        setLibrary(saveScope);
+        setView("list");
+        setOpenId(news[0].id);
+      }
+    }
+  };
+
+  const remove = async (id) => {
+    await deleteRecord(id);
+    setConfirmDel(null);
+    setOpenId(null);
+  };
+
+  /* ── 백업 내보내기 / 가져오기 ── */
+  const [importMsg, setImportMsg] = useState("");
+
+  const exportData = () => {
+    const blob = new Blob([JSON.stringify({ sermons: scoped }, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "설교서재-" + (library === "personal" ? "내서재" : "공동서재") + "-백업-" + new Date().toISOString().slice(0, 10) + ".json";
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const importData = async (e) => {
+    const file = e.target.files && e.target.files[0];
+    if (!file) return;
+    setImportMsg("");
+    try {
+      const data = JSON.parse(await file.text());
+      const arr = Array.isArray(data) ? data : data.sermons;
+      if (!Array.isArray(arr)) throw new Error("bad format");
+      const existing = new Set(sermons.map((s) => s.id));
+      const cleaned = arr
+        .filter((r) => r && r.title)
+        .map((r) => ({
+          id: !r.id || existing.has(r.id) ? uid() : String(r.id),
+          title: String(r.title || ""),
+          date: String(r.date || ""),
+          book: BOOK_NAMES.includes(r.book) ? r.book : "",
+          ref: String(r.ref || ""),
+          season: SEASONS.includes(r.season) ? r.season : "일반",
+          tags: Array.isArray(r.tags) ? r.tags.map(String) : [],
+          fileName: String(r.fileName || ""),
+          content: String(r.content || ""),
+          summary: String(r.summary || ""),
+        }));
+      if (!cleaned.length) {
+        setImportMsg("가져올 기록이 없습니다.");
+      } else {
+        const news = await insertRecords(cleaned, "personal");
+        setImportMsg(news.length + "편을 내 서재로 가져왔습니다.");
+        setLibrary("personal");
+      }
+    } catch (err) {
+      setImportMsg("가져오기에 실패했습니다. JSON 형식의 백업/가져오기 파일인지 확인해 주세요.");
+    }
+    e.target.value = "";
+  };
+
+  const scriptureLabel = (s) =>
+    s.book ? `${s.book}${s.ref ? " " + s.ref : ""}` : "본문 미기록";
+
+  /* ── 렌더 ── */
+  return (
+    <div className="app">
+      <style>{CSS}</style>
+
+      <header className="masthead">
+        <div className="masthead-inner">
+          <div className="brand">
+            <span className="brand-mark">≡</span>
+            <div>
+              <h1>설교 서재</h1>
+              <p className="brand-sub">말씀의 기록과 흐름을 한 곳에</p>
+            </div>
+          </div>
+          <nav className="tabs" role="tablist">
+            <button className={view === "list" ? "on" : ""} onClick={() => setView("list")}>기록</button>
+            <button className={view === "map" ? "on" : ""} onClick={() => { setMapBook(null); setView("map"); }}>성경 지도</button>
+            <button className={view === "topics" ? "on" : ""} onClick={() => { setTopicSel(null); setView("topics"); }}>주제 지도</button>
+            <button className={view === "seasons" ? "on" : ""} onClick={() => { setSeasonSel(null); setView("seasons"); }}>절기 지도</button>
+            <button className="new-btn" onClick={startNew}>+ 새 설교</button>
+            <button className="logout-btn" onClick={onLogout} title="로그아웃">{profileName} · 로그아웃</button>
+          </nav>
+        </div>
+      </header>
+
+      <div className="lib-bar">
+        <div className="lib-inner">
+          <button className={library === "personal" ? "on" : ""} onClick={() => setLibrary("personal")}>내 서재</button>
+          <button className={library === "shared" ? "on" : ""} onClick={() => setLibrary("shared")}>공동 서재</button>
+        </div>
+      </div>
+
+      {saveState === "error" && (
+        <div className="banner error">저장에 실패했습니다. 네트워크 상태를 확인한 뒤 다시 수정해 보세요.</div>
+      )}
+      {!loaded && <div className="banner">기록을 불러오는 중…</div>}
+
+      {/* ───────── 기록 목록 ───────── */}
+      {loaded && view === "list" && (
+        <main className="container">
+          <div className="toolbar">
+            <input
+              className="search"
+              placeholder="제목·본문·태그·내용 검색"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+            />
+            <div className="filters">
+              <select value={fYear} onChange={(e) => setFYear(e.target.value)}>
+                {years.map((y) => <option key={y}>{y === "전체" ? "연도: 전체" : y + "년"}</option>)}
+              </select>
+              <select value={fSeason} onChange={(e) => setFSeason(e.target.value)}>
+                <option>전체</option>
+                {SEASONS.map((s) => <option key={s}>{s}</option>)}
+              </select>
+              <select value={fTag} onChange={(e) => setFTag(e.target.value)}>
+                {allTags.map((t) => <option key={t}>{t === "전체" ? "태그: 전체" : "#" + t}</option>)}
+              </select>
+            </div>
+          </div>
+
+          <p className="count-line">
+            {scoped.length === 0
+              ? null
+              : `${filtered.length}편 표시 · ${library === "personal" ? "내 서재" : "공동 서재"} ${scoped.length}편`}
+            <button className="batch-link" onClick={() => { setBatchItems([]); setBatchDone(false); setView("batch"); }}>
+              여러 파일 한꺼번에 등록 →
+            </button>
+            <button className="batch-link" onClick={exportData} disabled={!scoped.length}>
+              백업 내보내기
+            </button>
+            <label className="batch-link" style={{ cursor: "pointer" }}>
+              가져오기(JSON)
+              <input type="file" accept=".json" hidden onChange={importData} />
+            </label>
+          </p>
+          {importMsg && <p className="ai-note" style={{ marginBottom: 12 }}>{importMsg}</p>}
+
+          {scoped.length === 0 && (
+            <div className="empty">
+              <p className="empty-title">아직 기록된 설교가 없습니다.</p>
+              <p>오른쪽 위 <b>+ 새 설교</b>를 눌러 첫 설교를 기록해 보세요.<br />
+              한글(HWP)·워드 파일의 <b>파일명</b>을 함께 적어두면 원본을 쉽게 찾을 수 있고,<br />
+              내용을 붙여넣으면 본문 검색까지 가능합니다.</p>
+            </div>
+          )}
+
+          <ul className="cards">
+            {filtered.map((s) => {
+              const open = openId === s.id;
+              return (
+                <li key={s.id} className={"card" + (open ? " open" : "")}>
+                  <button className="card-head" onClick={() => setOpenId(open ? null : s.id)}>
+                    <div className="card-main">
+                      <span className="scripture">{scriptureLabel(s)}</span>
+                      <span className="card-title">{s.title}</span>
+                    </div>
+                    <div className="card-meta">
+                      {library === "shared" && s.author && <span className="season author">{s.author}</span>}
+                      {s.season && s.season !== "일반" && <span className="season">{s.season}</span>}
+                      <span className="date">{s.date || "날짜 없음"}</span>
+                    </div>
+                  </button>
+                  {open && (
+                    <div className="card-body">
+                      {(s.tags || []).length > 0 && (
+                        <div className="tag-row">
+                          {s.tags.map((t) => (
+                            <button key={t} className="tag" onClick={() => { setFTag(t); setOpenId(null); }}>#{t}</button>
+                          ))}
+                        </div>
+                      )}
+                      {s.fileName && <p className="file-line">원본 파일: <code>{s.fileName}</code></p>}
+                      {s.summary && <div className="summary"><b>요약</b>{s.summary}</div>}
+                      {s.content
+                        ? <div className="content">{s.content}</div>
+                        : <p className="muted">저장된 본문 내용이 없습니다.</p>}
+                      <div className="card-actions">
+                        {s.mine ? (
+                          <>
+                            <button className="ghost" onClick={() => startEdit(s)}>수정</button>
+                            {confirmDel === s.id ? (
+                              <span className="confirm">
+                                정말 삭제할까요?
+                                <button className="danger" onClick={() => remove(s.id)}>삭제</button>
+                                <button className="ghost" onClick={() => setConfirmDel(null)}>취소</button>
+                              </span>
+                            ) : (
+                              <button className="ghost danger-text" onClick={() => setConfirmDel(s.id)}>삭제</button>
+                            )}
+                          </>
+                        ) : (
+                          <span className="muted" style={{ fontSize: 13 }}>
+                            {s.author ? s.author + "님의 기록" : "다른 사용자의 기록"} — 본인만 수정할 수 있습니다.
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+
+          {scoped.length > 0 && filtered.length === 0 && (
+            <div className="empty"><p>조건에 맞는 설교가 없습니다. 검색어나 필터를 바꿔보세요.</p></div>
+          )}
+        </main>
+      )}
+
+      {/* ───────── 작성 / 수정 ───────── */}
+      {loaded && view === "form" && (
+        <main className="container narrow">
+          <h2 className="page-title">{editingId ? "설교 수정" : "새 설교 기록"}</h2>
+
+          <div className="ai-box">
+            <p className="ai-title">파일에서 자동으로 채우기</p>
+            <p className="ai-desc">
+              워드(.docx)·한글(.hwpx)·PDF·텍스트(.txt) 파일을 올리면 <b>읽기와 AI 분석까지 자동으로 진행되어</b>
+              제목·날짜·본문 말씀·절기·태그·요약이 채워집니다. 확인 후 저장만 누르시면 됩니다.
+              아래 버튼은 내용을 직접 붙여넣었을 때 분석용입니다.
+            </p>
+            <div className="ai-actions">
+              <label className="upload-btn">
+                파일 올리기
+                <input type="file" accept=".docx,.txt,.pdf,.hwp,.hwpx" onChange={handleFile} hidden />
+              </label>
+              <button className="analyze-btn" disabled={!form.content.trim() || analyzing} onClick={analyze}>
+                {analyzing ? "분석 중…" : "AI로 자동 분석"}
+              </button>
+            </div>
+            {fileMsg && <p className="ai-note">{fileMsg}</p>}
+            {aiError && <p className="ai-note err">{aiError}</p>}
+            <p className="ai-usage">파일 올리기·검색·보관·지도는 완전히 무료입니다. AI 자동 분석만 아래에 등록한 Anthropic API 키로 호출되며, 호출한 만큼 Anthropic에서 소액의 요금이 부과됩니다 (설교 1편당 몇 원 수준).</p>
+            {apiKey ? (
+              <p className="ai-usage">✓ API 키 등록됨 — AI 자동 분석 사용 가능{" "}
+                <button className="batch-link" onClick={clearKey}>키 삭제</button>
+              </p>
+            ) : (
+              <div style={{ marginTop: 8 }}>
+                <p className="ai-usage">AI 자동 분석을 쓰려면 console.anthropic.com에서 API 키를 발급받아 등록하세요. 키는 이 기기(브라우저)에만 저장됩니다. 등록하지 않아도 날짜·본문 말씀 자동 인식과 나머지 모든 기능은 정상 작동합니다.</p>
+                <div className="ai-actions" style={{ marginTop: 8 }}>
+                  <input type="password" placeholder="sk-ant-..." value={keyInput}
+                    onChange={(e) => setKeyInput(e.target.value)}
+                    style={{ flex: 1, minWidth: 180, padding: "9px 12px", fontSize: 13, border: "1px solid var(--line)", borderRadius: 8 }} />
+                  <button className="ghost" onClick={saveKey} disabled={!keyInput.trim()}>키 저장</button>
+                </div>
+              </div>
+            )}
+          </div>
+
+          <label className="field">
+            <span>제목 *</span>
+            <input value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })}
+              placeholder="예: 광야에서 만나는 은혜" />
+          </label>
+
+          <label className="field">
+            <span>저장 위치</span>
+            <select value={saveScope} onChange={(e) => setSaveScope(e.target.value)}>
+              <option value="personal">내 서재 (나에게만 보임)</option>
+              <option value="shared">공동 서재 (모든 사용자에게 보임)</option>
+            </select>
+          </label>
+
+          <div className="row">
+            <label className="field">
+              <span>날짜</span>
+              <input type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} />
+            </label>
+            <label className="field">
+              <span>절기</span>
+              <select value={form.season} onChange={(e) => setForm({ ...form, season: e.target.value })}>
+                {SEASONS.map((s) => <option key={s}>{s}</option>)}
+              </select>
+            </label>
+          </div>
+
+          <div className="row">
+            <label className="field">
+              <span>본문 성경</span>
+              <select value={form.book} onChange={(e) => setForm({ ...form, book: e.target.value })}>
+                <option value="">선택</option>
+                <optgroup label="구약">
+                  {BOOKS.slice(0, OT_COUNT).map(([b]) => <option key={b}>{b}</option>)}
+                </optgroup>
+                <optgroup label="신약">
+                  {BOOKS.slice(OT_COUNT).map(([b]) => <option key={b}>{b}</option>)}
+                </optgroup>
+              </select>
+            </label>
+            <label className="field">
+              <span>장·절</span>
+              <input value={form.ref} onChange={(e) => setForm({ ...form, ref: e.target.value })}
+                placeholder="예: 3:16-20" />
+            </label>
+          </div>
+
+          <label className="field">
+            <span>태그 (쉼표로 구분)</span>
+            <input value={form.tags} onChange={(e) => setForm({ ...form, tags: e.target.value })}
+              placeholder="예: 은혜, 회개, 새가족" />
+          </label>
+
+          <label className="field">
+            <span>요약 (AI 분석 시 자동 작성되며, 직접 수정할 수 있습니다)</span>
+            <textarea rows={3} value={form.summary}
+              onChange={(e) => setForm({ ...form, summary: e.target.value })}
+              placeholder="설교의 핵심 메시지 요약" />
+          </label>
+
+          <label className="field">
+            <span>원본 파일명 (HWP·워드 파일을 찾기 위한 메모)</span>
+            <input value={form.fileName} onChange={(e) => setForm({ ...form, fileName: e.target.value })}
+              placeholder="예: 2026-07-05_주일설교_광야의은혜.hwp" />
+          </label>
+
+          <label className="field">
+            <span>설교 내용 · 요약 (붙여넣으면 내용 검색이 가능합니다)</span>
+            <textarea rows={12} value={form.content}
+              onChange={(e) => setForm({ ...form, content: e.target.value })}
+              placeholder="설교 전문이나 개요, 핵심 요약을 붙여넣어 보관하세요." />
+          </label>
+
+          <div className="form-actions">
+            <button className="primary" disabled={!form.title.trim()} onClick={saveForm}>
+              {editingId ? "수정 저장" : "저장"}
+            </button>
+            <button className="ghost" onClick={() => setView("list")}>취소</button>
+          </div>
+        </main>
+      )}
+
+      {/* ───────── 일괄 등록 ───────── */}
+      {loaded && view === "batch" && (
+        <main className="container narrow">
+          <h2 className="page-title">여러 파일 일괄 등록</h2>
+          <p className="map-sub">
+            워드(.docx)·한글(.hwpx)·PDF·텍스트(.txt) 파일을 여러 개 선택하면 순서대로 읽어 자동 등록합니다.
+            일반 한글(.hwp)은 변환 후 올려주세요.
+          </p>
+
+          <label className="field" style={{ marginTop: 16 }}>
+            <span>등록 위치</span>
+            <select value={batchScope} disabled={batchRunning} onChange={(e) => setBatchScope(e.target.value)}>
+              <option value="personal">내 서재 (나에게만 보임)</option>
+              <option value="shared">공동 서재 (모든 사용자에게 보임)</option>
+            </select>
+          </label>
+
+          <label className="check-line">
+            <input type="checkbox" checked={batchUseAI} disabled={batchRunning}
+              onChange={(e) => setBatchUseAI(e.target.checked)} />
+            <span><b>AI 자동 분석 사용</b> — 제목·본문·태그·요약을 자동으로 채웁니다 (등록한 API 키로 호출, 파일 1개당 소액 과금).
+            끄면 파일명·내용·날짜·본문 인식만으로 저장됩니다.</span>
+          </label>
+
+          {batchUseAI && !apiKey && (
+            <p className="ai-note err" style={{ marginTop: 10 }}>
+              API 키가 등록되어 있지 않습니다. '+ 새 설교' 화면 안내에 따라 키를 등록하거나, 체크를 해제하면 내용·날짜·본문 인식만으로 등록됩니다.
+            </p>
+          )}
+          <div className="ai-actions" style={{ marginTop: 14 }}>
+            <label className={"upload-btn" + (batchRunning ? " disabled" : "")}>
+              {batchRunning ? "등록 진행 중…" : "파일 여러 개 선택"}
+              <input type="file" multiple accept=".docx,.txt,.pdf,.hwp,.hwpx" hidden
+                disabled={batchRunning}
+                onChange={(e) => { runBatch(Array.from(e.target.files || [])); e.target.value = ""; }} />
+            </label>
+            <button className="ghost" onClick={() => setView("list")} disabled={batchRunning}>
+              기록으로 돌아가기
+            </button>
+          </div>
+
+          {batchRunning && (
+            <p className="ai-note" style={{ marginTop: 14 }}>
+              등록이 끝날 때까지 이 화면을 닫지 마세요.
+            </p>
+          )}
+
+          {batchItems.length > 0 && (
+            <ul className="batch-list">
+              {batchItems.map((it, i) => {
+                const key = it.status === "완료" ? "done" : it.status === "실패" ? "fail"
+                  : it.status === "대기" ? "wait" : "work";
+                return (
+                  <li key={i} className={"batch-item s-" + key}>
+                    <span className="batch-name">{it.name}</span>
+                    <span className="batch-status">
+                      {it.status}{it.note ? ` · ${it.note}` : ""}
+                    </span>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+
+          {batchDone && batchItems.length > 0 && (
+            <div className="batch-summary">
+              <p>
+                <b>{batchItems.filter((i) => i.status === "완료").length}편</b> 등록 완료
+                {batchItems.some((i) => i.status === "실패") &&
+                  ` · ${batchItems.filter((i) => i.status === "실패").length}편 실패`}
+              </p>
+              <button className="primary" onClick={() => { setLibrary(batchScope); setView("list"); }}>등록된 기록 보기</button>
+            </div>
+          )}
+        </main>
+      )}
+
+      {/* ───────── 주제 지도 ───────── */}
+      {loaded && view === "topics" && (
+        <main className="container">
+          <h2 className="page-title">주제 지도</h2>
+          <p className="map-sub">지금까지 다룬 설교 주제의 분포와 비중입니다. 가나다순으로 정렬되며, 색이 진할수록 자주 다룬 주제입니다.</p>
+
+          <div className="stat-row">
+            <div className="stat"><b>{tagList.length}</b><span>전체 주제</span></div>
+            <div className="stat">
+              <b>{tagList.length ? tagList[0][0] : "—"}</b>
+              <span>가장 많이 다룬 주제{tagList.length ? ` (${tagList[0][1]}편)` : ""}</span>
+            </div>
+            <div className="stat">
+              <b>{tagList.filter(([, c]) => c === 1).length}</b>
+              <span>한 번만 다룬 주제</span>
+            </div>
+          </div>
+
+          {tagList.length === 0 ? (
+            <div className="empty">
+              <p>아직 태그가 붙은 설교가 없습니다.<br />
+              설교를 기록할 때 태그를 달거나, AI 자동 분석을 사용하면 주제가 자동으로 채워집니다.</p>
+            </div>
+          ) : (
+            <>
+              {/* 대주제 띠: 각 대주제의 폭 = 설교 수 비례 (가나다순) */}
+              <div className="spine-wrap">
+                <div className="spine-labels"><span>대주제별 비중 (가나다순)</span></div>
+                <div className="spine" role="img" aria-label="대주제별 설교 분포">
+                  {topicTree.map((cat, i) => (
+                    <button
+                      key={cat.name}
+                      className={"spine-seg" + (topicSel && topicSel.kind === "cat" && topicSel.name === cat.name ? " sel" : "")}
+                      style={{ flexGrow: cat.count, background: heat(cat.count, maxCat) }}
+                      title={`${cat.name} · ${cat.count}편`}
+                      onClick={() => setTopicSel(
+                        topicSel && topicSel.kind === "cat" && topicSel.name === cat.name
+                          ? null : { kind: "cat", name: cat.name }
+                      )}
+                    />
+                  ))}
+                </div>
+                <div className="spine-legend">
+                  <span>적음</span>
+                  <span className="legend-cells">
+                    {[0, 0.25, 0.5, 0.75, 1].map((t) => (
+                      <i key={t} style={{ background: t === 0 ? "var(--cell-empty)" : heat(t * maxTag, maxTag) }} />
+                    ))}
+                  </span>
+                  <span>많음</span>
+                </div>
+              </div>
+
+              {/* 대주제 격자 (가나다순) */}
+              <div className="book-grid">
+                {topicTree.map((cat, i) => (
+                  <button key={cat.name}
+                    className={"book-cell" + (topicSel && topicSel.kind === "cat" && topicSel.name === cat.name ? " sel" : "")}
+                    style={{ background: heat(cat.count, maxCat) }}
+                    onClick={() => setTopicSel(
+                      topicSel && topicSel.kind === "cat" && topicSel.name === cat.name
+                        ? null : { kind: "cat", name: cat.name }
+                    )}>
+                    <span className={"book-name" + (cat.count / maxCat > 0.5 ? " inv" : "")}>
+                      {cat.name} {cat.count}
+                    </span>
+                  </button>
+                ))}
+              </div>
+
+              {/* 세부 주제 격자 (가나다순, 초성별 색 교차) */}
+              <div className="spine-labels" style={{ marginBottom: 4 }}><span>세부 주제 (가나다순)</span></div>
+              <div className="book-grid">
+                {tagsKo.map(([t, c], i) => (
+                  <button key={t}
+                    className={"book-cell" + (topicSel && topicSel.kind === "tag" && topicSel.name === t ? " sel" : "")}
+                    style={{ background: heat(c, maxTag) }}
+                    onClick={() => setTopicSel(
+                      topicSel && topicSel.kind === "tag" && topicSel.name === t
+                        ? null : { kind: "tag", name: t }
+                    )}>
+                    <span className={"book-name" + (c / maxTag > 0.5 ? " inv" : "")}>
+                      {t} {c}
+                    </span>
+                  </button>
+                ))}
+              </div>
+
+              {topicSel && (
+                <div className="book-detail">
+                  <h3>
+                    {topicSel.kind === "cat" ? topicSel.name + " (대주제)" : "#" + topicSel.name}
+                    {" "}<small>{topicSermons.length}편</small>
+                  </h3>
+                  <ul>
+                    {topicSermons.map((s) => (
+                      <li key={s.id}>
+                        <button className="link" onClick={() => { setView("list"); setOpenId(s.id); setQuery(""); setFYear("전체"); setFSeason("전체"); setFTag("전체"); }}>
+                          <span className="scripture">{scriptureLabel(s)}</span> {s.title}
+                          <span className="date"> · {s.date || "날짜 없음"}</span>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </>
+          )}
+        </main>
+      )}
+
+      {/* ───────── 절기 지도 ───────── */}
+      {loaded && view === "seasons" && (
+        <main className="container">
+          <h2 className="page-title">절기 지도</h2>
+          <p className="map-sub">교회력(대림절→특별집회) 순서로 배열한 절기별 설교 분포입니다. 색이 진할수록 그 절기에 설교를 많이 하셨습니다.</p>
+
+          <div className="stat-row">
+            <div className="stat"><b>{scoped.length}</b><span>전체 설교</span></div>
+            <div className="stat">
+              <b>{SEASON_ORDER.filter((s) => s !== "일반" && seasonCounts[s]).length}<i>/{SEASON_ORDER.length - 1}</i></b>
+              <span>설교한 절기</span>
+            </div>
+            <div className="stat">
+              <b>{scoped.length ? Math.round((seasonalTotal / scoped.length) * 100) : 0}%</b>
+              <span>절기 설교 비중</span>
+            </div>
+            <div className="stat">
+              <b>{topSeason || "—"}</b>
+              <span>가장 많은 절기{topSeason ? ` (${seasonCounts[topSeason]}편)` : ""}</span>
+            </div>
+          </div>
+
+          {/* 절기 띠: 교회력 순, 색 농도 = 설교 수 */}
+          <div className="spine-wrap">
+            <div className="spine-labels"><span>교회력 순서</span><span>일반</span></div>
+            <div className="spine" role="img" aria-label="절기별 설교 분포">
+              {SEASON_ORDER.map((s, i) => (
+                <button
+                  key={s}
+                  className={"spine-seg" + (seasonSel === s ? " sel" : "") + (s === "일반" ? " nt-start" : "")}
+                  style={{ flexGrow: 1, background: heat(seasonCounts[s], maxSeason) }}
+                  title={`${s} · ${seasonCounts[s] || 0}편`}
+                  onClick={() => setSeasonSel(seasonSel === s ? null : s)}
+                />
+              ))}
+            </div>
+            <div className="spine-legend">
+              <span>적음</span>
+              <span className="legend-cells">
+                {[0, 0.25, 0.5, 0.75, 1].map((t) => (
+                  <i key={t} style={{ background: t === 0 ? "var(--cell-empty)" : heat(t * maxSeason, maxSeason) }} />
+                ))}
+              </span>
+              <span>많음</span>
+            </div>
+          </div>
+
+          {/* 절기 격자 */}
+          <div className="book-grid">
+            {SEASON_ORDER.map((s) => (
+              <button key={s}
+                className={"book-cell" + (seasonSel === s ? " sel" : "")}
+                style={{ background: heat(seasonCounts[s], maxSeason) }}
+                onClick={() => setSeasonSel(seasonSel === s ? null : s)}>
+                <span className={"book-name" + ((seasonCounts[s] || 0) / maxSeason > 0.5 ? " inv" : "")}>
+                  {s}{seasonCounts[s] ? ` ${seasonCounts[s]}` : ""}
+                </span>
+              </button>
+            ))}
+          </div>
+
+          {seasonSel && (
+            <div className="book-detail">
+              <h3>{seasonSel} <small>{seasonCounts[seasonSel] || 0}편</small></h3>
+              {(seasonCounts[seasonSel] || 0) === 0 ? (
+                <p className="muted">아직 이 절기에 기록된 설교가 없습니다.</p>
+              ) : (
+                <ul>
+                  {scoped
+                    .filter((s) => (s.season && SEASONS.includes(s.season) ? s.season : "일반") === seasonSel)
+                    .sort((a, b) => (b.date || "").localeCompare(a.date || ""))
+                    .map((s) => (
+                      <li key={s.id}>
+                        <button className="link" onClick={() => { setView("list"); setOpenId(s.id); setQuery(""); setFYear("전체"); setFSeason("전체"); setFTag("전체"); }}>
+                          <span className="scripture">{scriptureLabel(s)}</span> {s.title}
+                          <span className="date"> · {s.date || "날짜 없음"}</span>
+                        </button>
+                      </li>
+                    ))}
+                </ul>
+              )}
+            </div>
+          )}
+        </main>
+      )}
+
+      {/* ───────── 성경 지도 ───────── */}
+      {loaded && view === "map" && (
+        <main className="container">
+          <h2 className="page-title">성경 지도</h2>
+          <p className="map-sub">창세기부터 요한계시록까지, 지금까지 설교한 본문의 위치와 비중입니다.</p>
+
+          <div className="stat-row">
+            <div className="stat"><b>{scoped.length}</b><span>전체 설교</span></div>
+            <div className="stat"><b>{coveredBooks}<i>/66</i></b><span>설교한 성경</span></div>
+            <div className="stat"><b>{withBook ? Math.round((otSermons / withBook) * 100) : 0}%</b><span>구약 비중</span></div>
+            <div className="stat"><b>{withBook ? Math.round((ntSermons / withBook) * 100) : 0}%</b><span>신약 비중</span></div>
+          </div>
+
+          {/* 성경 등뼈: 각 책의 폭 = 장 수 비례 */}
+          <div className="spine-wrap">
+            <div className="spine-labels"><span>구약</span><span>신약</span></div>
+            <div className="spine" role="img" aria-label="성경 전체 설교 분포">
+              {BOOKS.map(([name, ch], i) => (
+                <button
+                  key={name}
+                  className={"spine-seg" + (mapBook === name ? " sel" : "") + (i === OT_COUNT ? " nt-start" : "")}
+                  style={{ flexGrow: ch, background: heat(bookCounts[name], maxCount) }}
+                  title={`${name} · ${bookCounts[name] || 0}편`}
+                  onClick={() => setMapBook(mapBook === name ? null : name)}
+                />
+              ))}
+            </div>
+            <div className="spine-legend">
+              <span>적음</span>
+              <span className="legend-cells">
+                {[0, 0.25, 0.5, 0.75, 1].map((t) => (
+                  <i key={t} style={{ background: t === 0 ? "var(--cell-empty)" : heat(t * maxCount, maxCount) }} />
+                ))}
+              </span>
+              <span>많음</span>
+            </div>
+          </div>
+
+          {/* 책별 그리드 */}
+          <div className="book-grid">
+            {BOOKS.map(([name], i) => (
+              <button key={name}
+                className={"book-cell" + (mapBook === name ? " sel" : "")}
+                style={{ background: heat(bookCounts[name], maxCount) }}
+                onClick={() => setMapBook(mapBook === name ? null : name)}>
+                <span className={"book-name" + (bookCounts[name] / maxCount > 0.5 ? " inv" : "")}>
+                  {name}{bookCounts[name] ? ` ${bookCounts[name]}` : ""}
+                </span>
+              </button>
+            ))}
+          </div>
+
+          {mapBook && (
+            <div className="book-detail">
+              <h3>{mapBook} <small>{bookCounts[mapBook] || 0}편</small></h3>
+              {(bookCounts[mapBook] || 0) === 0 ? (
+                <p className="muted">아직 이 성경으로 설교한 기록이 없습니다.</p>
+              ) : (
+                <ul>
+                  {scoped
+                    .filter((s) => s.book === mapBook)
+                    .sort((a, b) => (b.date || "").localeCompare(a.date || ""))
+                    .map((s) => (
+                      <li key={s.id}>
+                        <button className="link" onClick={() => { setView("list"); setOpenId(s.id); setQuery(""); setFYear("전체"); setFSeason("전체"); setFTag("전체"); }}>
+                          <span className="scripture">{scriptureLabel(s)}</span> {s.title}
+                          <span className="date"> · {s.date || "날짜 없음"}</span>
+                        </button>
+                      </li>
+                    ))}
+                </ul>
+              )}
+            </div>
+          )}
+        </main>
+      )}
+
+      <footer className="foot">기록은 온라인 서버에 저장되어 어느 기기에서나 로그인하면 이어집니다. 안전한 보관을 위해 가끔 '백업 내보내기'도 활용하세요.</footer>
+    </div>
+  );
+}
+
+/* ── 스타일 ─────────────────────────────────────────────── */
+const CSS = `
+@import url('https://fonts.googleapis.com/css2?family=Noto+Serif+KR:wght@500;700&family=Noto+Sans+KR:wght@400;500;700&display=swap');
+
+:root{
+  --ink:#22334a; --ink-deep:#16283d; --paper:#f6f7f5; --card:#ffffff;
+  --line:#dfe3e0; --muted:#7b8794; --accent:#a8802f; --accent-soft:#f3ead2;
+  --cell-empty:#e9ecea; --danger:#b3402f;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+.app{min-height:100vh;background:var(--paper);color:var(--ink);
+  font-family:'Noto Sans KR','Apple SD Gothic Neo','Malgun Gothic',sans-serif;
+  display:flex;flex-direction:column}
+button{font-family:inherit;cursor:pointer}
+button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{
+  outline:2px solid var(--accent);outline-offset:2px}
+
+/* 헤더 */
+.masthead{background:var(--ink-deep);color:#f2f4f1;border-bottom:3px solid var(--accent)}
+.masthead-inner{max-width:960px;margin:0 auto;padding:14px 18px;display:flex;
+  align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.brand{display:flex;align-items:center;gap:12px}
+.brand-mark{font-size:26px;color:var(--accent);line-height:1}
+.brand h1{font-family:'Noto Serif KR',serif;font-size:21px;font-weight:700;letter-spacing:.02em}
+.brand-sub{font-size:12px;color:#aab6c4;margin-top:2px}
+.tabs{display:flex;gap:8px;align-items:center}
+.tabs button{background:transparent;border:1px solid #3a4d66;color:#cfd8e2;
+  padding:7px 14px;border-radius:20px;font-size:14px}
+.tabs button.on{background:#f2f4f1;color:var(--ink-deep);border-color:#f2f4f1;font-weight:700}
+.tabs .new-btn{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:700}
+
+.banner{max-width:960px;margin:12px auto 0;padding:10px 16px;font-size:14px;
+  background:var(--accent-soft);border:1px solid var(--accent);border-radius:8px;width:calc(100% - 36px)}
+.banner.error{background:#fbe9e6;border-color:var(--danger);color:var(--danger)}
+
+.container{max-width:960px;width:100%;margin:0 auto;padding:22px 18px 40px;flex:1}
+.container.narrow{max-width:640px}
+.page-title{font-family:'Noto Serif KR',serif;font-size:22px;margin-bottom:6px}
+
+/* 툴바 */
+.toolbar{display:flex;flex-direction:column;gap:10px;margin-bottom:8px}
+.search{width:100%;padding:12px 14px;font-size:15px;border:1px solid var(--line);
+  border-radius:10px;background:var(--card)}
+.filters{display:flex;gap:8px;flex-wrap:wrap}
+.filters select{padding:8px 10px;border:1px solid var(--line);border-radius:8px;
+  background:var(--card);font-size:14px;font-family:inherit}
+.count-line{font-size:13px;color:var(--muted);margin:6px 2px 12px;min-height:16px}
+
+/* 카드 */
+.cards{list-style:none;display:flex;flex-direction:column;gap:10px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;overflow:hidden}
+.card.open{border-color:var(--ink)}
+.card-head{width:100%;background:none;border:none;text-align:left;padding:14px 16px;
+  display:flex;justify-content:space-between;gap:12px;align-items:baseline}
+.card-main{display:flex;flex-direction:column;gap:3px;min-width:0}
+.scripture{font-family:'Noto Serif KR',serif;font-weight:700;color:var(--accent);font-size:13.5px}
+.card-title{font-size:16.5px;font-weight:700;color:var(--ink)}
+.card-meta{display:flex;gap:8px;align-items:center;flex-shrink:0}
+.season{font-size:12px;background:var(--accent-soft);color:#7a5c1d;
+  padding:3px 8px;border-radius:12px;white-space:nowrap}
+.date{font-size:13px;color:var(--muted);white-space:nowrap}
+.card-body{border-top:1px dashed var(--line);padding:14px 16px 16px}
+.tag-row{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px}
+.tag{background:#eef1f5;border:none;color:#41546e;font-size:12.5px;
+  padding:4px 10px;border-radius:12px}
+.file-line{font-size:13px;color:var(--muted);margin-bottom:10px}
+.file-line code{background:#eef1f5;padding:2px 6px;border-radius:5px;font-size:12.5px}
+.content{white-space:pre-wrap;font-size:14.5px;line-height:1.75;
+  max-height:320px;overflow-y:auto;padding-right:6px}
+.muted{color:var(--muted);font-size:14px}
+.card-actions{display:flex;gap:8px;margin-top:14px;align-items:center;flex-wrap:wrap}
+.confirm{display:flex;gap:8px;align-items:center;font-size:13.5px;color:var(--danger)}
+
+button.ghost{background:none;border:1px solid var(--line);border-radius:8px;
+  padding:7px 14px;font-size:13.5px;color:var(--ink)}
+button.danger-text{color:var(--danger)}
+button.danger{background:var(--danger);border:none;color:#fff;border-radius:8px;
+  padding:7px 14px;font-size:13.5px}
+button.primary{background:var(--ink-deep);color:#fff;border:none;border-radius:10px;
+  padding:12px 26px;font-size:15px;font-weight:700}
+button.primary:disabled{opacity:.4;cursor:not-allowed}
+button.link{background:none;border:none;text-align:left;font-size:14.5px;
+  padding:6px 0;color:var(--ink);line-height:1.5}
+button.link:hover{text-decoration:underline}
+
+/* AI 자동 채우기 */
+.ai-box{background:var(--card);border:1.5px dashed var(--accent);border-radius:12px;
+  padding:16px 18px;margin-top:14px}
+.ai-title{font-family:'Noto Serif KR',serif;font-weight:700;font-size:15.5px;margin-bottom:6px}
+.ai-desc{font-size:13.5px;color:#5a6a7d;line-height:1.7;margin-bottom:12px}
+.ai-actions{display:flex;gap:10px;flex-wrap:wrap}
+.upload-btn{display:inline-flex;align-items:center;background:var(--ink-deep);color:#fff;
+  border-radius:9px;padding:10px 18px;font-size:14px;font-weight:700;cursor:pointer}
+.analyze-btn{background:var(--accent);color:#fff;border:none;border-radius:9px;
+  padding:10px 18px;font-size:14px;font-weight:700}
+.analyze-btn:disabled{opacity:.4;cursor:not-allowed}
+.ai-note{margin-top:10px;font-size:13px;line-height:1.7;background:var(--accent-soft);
+  border-radius:8px;padding:8px 12px;color:#6b5320}
+.ai-note.err{background:#fbe9e6;color:var(--danger)}
+.ai-usage{margin-top:10px;font-size:11.5px;color:var(--muted)}
+
+/* 일괄 등록 */
+.batch-link{background:none;border:none;color:var(--accent);font-size:13px;
+  font-weight:700;margin-left:12px;padding:0;text-decoration:underline}
+.check-line{display:flex;gap:10px;align-items:flex-start;margin-top:16px;
+  font-size:13.5px;line-height:1.7;color:#4a5a6e;background:var(--card);
+  border:1px solid var(--line);border-radius:10px;padding:12px 14px;cursor:pointer}
+.check-line input{margin-top:4px}
+.upload-btn.disabled{opacity:.5;cursor:not-allowed}
+.batch-list{list-style:none;margin-top:18px;display:flex;flex-direction:column;gap:6px}
+.batch-item{display:flex;justify-content:space-between;gap:12px;align-items:baseline;
+  background:var(--card);border:1px solid var(--line);border-radius:9px;
+  padding:10px 14px;font-size:13.5px}
+.batch-name{font-weight:500;word-break:break-all}
+.batch-status{color:var(--muted);white-space:nowrap;flex-shrink:0;font-size:12.5px}
+.batch-item.s-done .batch-status{color:#2e7d4f;font-weight:700}
+.batch-item.s-fail .batch-status{color:var(--danger);font-weight:700;white-space:normal}
+.batch-item.s-work .batch-status{color:var(--accent)}
+.batch-summary{margin-top:20px;text-align:center;background:var(--card);
+  border:1px solid var(--line);border-radius:12px;padding:20px}
+.batch-summary p{margin-bottom:12px;font-size:15px}
+
+/* 요약 표시 */
+.summary{background:#f2f5f9;border-left:3px solid var(--accent);border-radius:0 8px 8px 0;
+  padding:10px 14px;font-size:14px;line-height:1.75;margin-bottom:12px}
+.summary b{display:block;font-size:12px;color:var(--accent);margin-bottom:4px}
+
+/* 폼 */
+.field{display:flex;flex-direction:column;gap:6px;margin-top:16px;flex:1}
+.field span{font-size:13px;font-weight:700;color:#4a5a6e}
+.field input,.field select,.field textarea{padding:11px 12px;font-size:15px;
+  border:1px solid var(--line);border-radius:9px;background:var(--card);font-family:inherit}
+.field textarea{resize:vertical;line-height:1.7}
+.row{display:flex;gap:12px}
+.form-actions{display:flex;gap:10px;margin-top:24px}
+
+/* 빈 상태 */
+.empty{text-align:center;padding:60px 20px;color:var(--muted);
+  font-size:14.5px;line-height:1.9}
+.empty-title{font-family:'Noto Serif KR',serif;font-size:19px;
+  color:var(--ink);margin-bottom:10px}
+
+/* 성경 지도 */
+.map-sub{font-size:14px;color:var(--muted);margin-bottom:18px}
+.stat-row{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:22px}
+.stat{background:var(--card);border:1px solid var(--line);border-radius:12px;
+  padding:14px 18px;min-width:110px;flex:1}
+.stat b{font-family:'Noto Serif KR',serif;font-size:24px;display:block}
+.stat b i{font-style:normal;font-size:15px;color:var(--muted)}
+.stat span{font-size:12.5px;color:var(--muted)}
+
+.spine-wrap{margin-bottom:24px}
+.spine-labels{display:flex;justify-content:space-between;font-size:12px;
+  color:var(--muted);margin-bottom:4px;font-weight:700}
+.spine{display:flex;height:44px;border-radius:8px;overflow:hidden;
+  border:1px solid var(--line);background:var(--card)}
+.spine-seg{flex-basis:0;border:none;padding:0;min-width:2px;transition:opacity .15s}
+.spine-seg:hover{opacity:.75}
+.spine-seg.sel{box-shadow:inset 0 0 0 2px var(--accent)}
+.spine-seg.nt-start{border-left:2px solid var(--accent)}
+.spine-legend{display:flex;gap:8px;align-items:center;justify-content:flex-end;
+  margin-top:6px;font-size:11.5px;color:var(--muted)}
+.legend-cells{display:flex;gap:2px}
+.legend-cells i{width:16px;height:10px;border-radius:2px;display:block}
+
+.book-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));
+  gap:5px;margin-bottom:20px}
+.book-cell{border:none;border-radius:7px;padding:9px 6px;text-align:center}
+.book-cell.sel{box-shadow:0 0 0 2px var(--accent)}
+.book-name{font-size:12px;color:var(--ink);font-weight:500}
+.book-name.inv{color:#fff}
+
+.book-detail{background:var(--card);border:1px solid var(--line);
+  border-radius:12px;padding:16px 18px}
+.book-detail h3{font-family:'Noto Serif KR',serif;font-size:18px;margin-bottom:8px}
+.book-detail h3 small{font-size:13px;color:var(--muted);font-weight:400}
+.book-detail ul{list-style:none}
+
+.foot{text-align:center;font-size:12px;color:var(--muted);padding:16px}
+
+/* 모바일 */
+@media (max-width:560px){
+  .row{flex-direction:column;gap:0}
+  .card-head{flex-direction:column;gap:6px}
+  .card-meta{align-self:flex-start}
+  .book-grid{grid-template-columns:repeat(auto-fill,minmax(76px,1fr))}
+  .book-name{font-size:10.5px}
+  .stat{min-width:calc(50% - 5px)}
+}
+/* 서재 전환 */
+.lib-bar{background:#fff;border-bottom:1px solid var(--line)}
+.lib-inner{max-width:960px;margin:0 auto;padding:10px 18px;display:flex;gap:8px}
+.lib-inner button{flex:0 0 auto;border:1px solid var(--line);background:#eef1f5;
+  color:var(--muted);border-radius:20px;padding:7px 20px;font-size:14px}
+.lib-inner button.on{background:var(--ink-deep);color:#fff;border-color:var(--ink-deep);font-weight:700}
+.season.author{background:#e4ebf3;color:#3c556f}
+
+/* 계정 */
+.logout-btn{background:transparent;border:none;color:#8fa2b8;font-size:12.5px;
+  padding:7px 6px;text-decoration:underline;white-space:nowrap}
+.auth-wrap{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px}
+.auth-card{background:var(--card);border:1px solid var(--line);border-radius:16px;
+  padding:30px 28px;width:100%;max-width:400px}
+.auth-brand{text-align:center;margin-bottom:18px}
+.auth-brand .brand-mark{font-size:30px}
+.auth-brand h1{font-family:'Noto Serif KR',serif;font-size:24px;margin:6px 0 4px}
+.auth-brand p{font-size:12.5px;color:var(--muted)}
+.auth-tabs{display:flex;gap:6px;background:#eef1f5;border-radius:10px;padding:4px;margin-bottom:6px}
+.auth-tabs button{flex:1;border:none;background:transparent;padding:9px;border-radius:8px;
+  font-size:14px;color:var(--muted)}
+.auth-tabs button.on{background:var(--card);color:var(--ink);font-weight:700;
+  box-shadow:0 1px 3px rgba(0,0,0,.08)}
+.auth-hint{font-size:13px;color:var(--accent);background:var(--accent-soft);
+  border-radius:8px;padding:8px 12px;margin-top:10px}
+.auth-err{font-size:13px;color:var(--danger);background:#fbe9e6;
+  border-radius:8px;padding:8px 12px;margin-top:14px}
+.auth-submit{width:100%;margin-top:18px}
+.auth-note{font-size:11.5px;color:var(--muted);line-height:1.7;margin-top:14px;text-align:center}
+@media (prefers-reduced-motion:reduce){
+  *{transition:none!important}
+}
+`;
+
+
+const rootEl = document.getElementById("root");
+ReactDOM.createRoot(rootEl).render(<AuthGate />);
+</script>
+<script>
+/* 실행 오류·로드 실패 안내 */
+window.__bootErr = "";
+window.addEventListener("error", function (e) {
+  if (window.__bootErr) return;
+  window.__bootErr = (e && e.message) ? e.message : "알 수 없는 오류";
+  var boot = document.getElementById("boot");
+  if (boot) {
+    boot.innerHTML = "앱 실행 중 오류가 발생했습니다:<br/><b style=\'color:#b3402f\'>"
+      + window.__bootErr
+      + "</b><br/><br/>이 문구를 그대로 Claude에게 보여주시면 해결해 드립니다.";
+  }
+}, true);
+window.addEventListener("load", function () {
+  setTimeout(function () {
+    var boot = document.getElementById("boot");
+    if (boot && !window.__bootErr) {
+      boot.innerHTML = "앱을 불러오지 못했습니다. 순서대로 확인해 주세요.<br/><br/>"
+        + "1. 크롬(Chrome)이나 엣지(Edge) 같은 최신 브라우저로 열었는지<br/>"
+        + "2. 인터넷 연결 상태 확인 후 새로고침(F5)<br/>"
+        + "3. 그래도 안 되면 이 화면을 Claude에게 보여주세요";
+    }
+  }, 8000);
+});
+</script>
+</body>
+</html>
