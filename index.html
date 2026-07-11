@@ -464,20 +464,27 @@ function alternateHues(names) {
 
 
 /* ── 온라인 계정 (Supabase) ───────────────────────────── */
+/* 서버가 저장하지 못하는 제어문자(널 문자 등) 제거 */
+function cleanText(s) {
+  return String(s == null ? "" : s)
+    .replace(/\u0000/g, "")
+    .replace(/[\u0001-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, "");
+}
+
 /* 기록 ↔ 서버 행 변환 */
 function rowFrom(r, scope, authorName) {
   return {
     scope: scope || r.scope || "personal",
-    author_name: authorName || "",
-    title: r.title || "",
-    date: r.date || "",
-    book: r.book || "",
-    ref: r.ref || "",
-    season: r.season || "일반",
-    tags: Array.isArray(r.tags) ? r.tags : [],
-    file_name: r.fileName || "",
-    content: r.content || "",
-    summary: r.summary || "",
+    author_name: cleanText(authorName),
+    title: cleanText(r.title),
+    date: cleanText(r.date),
+    book: cleanText(r.book),
+    ref: cleanText(r.ref),
+    season: cleanText(r.season) || "일반",
+    tags: Array.isArray(r.tags) ? r.tags.map(cleanText).filter(Boolean) : [],
+    file_name: cleanText(r.fileName),
+    content: cleanText(r.content),
+    summary: cleanText(r.summary),
   };
 }
 function recFrom(row, myId) {
