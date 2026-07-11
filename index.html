@@ -703,6 +703,7 @@ function SermonArchive({ user, profileName, onLogout }) {
     [sermons, library]
   );
   const [saveState, setSaveState] = useState("idle"); // idle | saving | error
+  const [saveErr, setSaveErr] = useState("");
   const [apiKey, setApiKey] = useState(() => {
     try { return localStorage.getItem(API_KEY_STORAGE) || ""; } catch (e) { return ""; }
   });
@@ -881,9 +882,9 @@ function SermonArchive({ user, profileName, onLogout }) {
       .from("sermons")
       .select("*")
       .order("created_at", { ascending: false });
-    if (error) { setSaveState("error"); return; }
+    if (error) { setSaveErr(error.message || ""); setSaveState("error"); return; }
     setSermons((data || []).map((row) => recFrom(row, user.id)));
-    setSaveState("idle");
+    setSaveState("idle"); setSaveErr("");
   };
   useEffect(() => { fetchAll().then(() => setLoaded(true)); }, []);
 
@@ -892,8 +893,8 @@ function SermonArchive({ user, profileName, onLogout }) {
     setSaveState("saving");
     const rows = recs.map((r) => rowFrom(r, scope || r.scope, profileName));
     const { data, error } = await sb.from("sermons").insert(rows).select();
-    if (error) { setSaveState("error"); return []; }
-    setSaveState("idle");
+    if (error) { setSaveErr(error.message || ""); setSaveState("error"); return []; }
+    setSaveState("idle"); setSaveErr("");
     const news = (data || []).map((row) => recFrom(row, user.id));
     setSermons((prev) => [...news, ...prev]);
     return news;
@@ -905,8 +906,8 @@ function SermonArchive({ user, profileName, onLogout }) {
       .update(rowFrom(rec, scope, profileName))
       .eq("id", id)
       .select();
-    if (error || !data || !data.length) { setSaveState("error"); return null; }
-    setSaveState("idle");
+    if (error || !data || !data.length) { setSaveErr(error ? (error.message || "") : "수정 권한이 없거나 기록을 찾지 못했습니다"); setSaveState("error"); return null; }
+    setSaveState("idle"); setSaveErr("");
     const upd = recFrom(data[0], user.id);
     setSermons((prev) => prev.map((s) => (s.id === id ? upd : s)));
     return upd;
@@ -914,8 +915,8 @@ function SermonArchive({ user, profileName, onLogout }) {
   const deleteRecord = async (id) => {
     setSaveState("saving");
     const { error } = await sb.from("sermons").delete().eq("id", id);
-    if (error) { setSaveState("error"); return; }
-    setSaveState("idle");
+    if (error) { setSaveErr(error.message || ""); setSaveState("error"); return; }
+    setSaveState("idle"); setSaveErr("");
     setSermons((prev) => prev.filter((s) => s.id !== id));
   };
 
@@ -1146,7 +1147,9 @@ function SermonArchive({ user, profileName, onLogout }) {
       </div>
 
       {saveState === "error" && (
-        <div className="banner error">저장에 실패했습니다. 네트워크 상태를 확인한 뒤 다시 수정해 보세요.</div>
+        <div className="banner error">
+          저장에 실패했습니다{saveErr ? " — 원인: " + saveErr : ""}. 이 문구를 Claude에게 보여주시면 해결할 수 있습니다.
+        </div>
       )}
       {!loaded && <div className="banner">기록을 불러오는 중…</div>}
 
