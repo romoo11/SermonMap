@@ -471,6 +471,13 @@ function cleanText(s) {
     .replace(/[\u0001-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, "");
 }
 
+/* 중복 판정: 제목+날짜 (제목이 없으면 파일명 기준) */
+function dupKey(r) {
+  const t = (r.title || "").trim().toLowerCase();
+  const base = t || (r.fileName || "").trim().toLowerCase();
+  return base + "|" + ((r.date || "").trim());
+}
+
 /* 기록 ↔ 서버 행 변환 */
 function rowFrom(r, scope, authorName) {
   return {
@@ -837,11 +844,14 @@ function SermonArchive({ user, profileName, onLogout }) {
   const [batchUseAI, setBatchUseAI] = useState(true);
   const [batchDone, setBatchDone] = useState(false);
 
+  const [batchSkipDup, setBatchSkipDup] = useState(true);
+
   const runBatch = async (files) => {
     if (!files.length || batchRunning) return;
     setBatchRunning(true);
     setBatchDone(false);
     setBatchItems(files.map((f) => ({ name: f.name, status: "대기", note: "" })));
+    const seenNames = new Set();
 
     const upd = (i, status, note) =>
       setBatchItems((prev) => prev.map((it, j) => (j === i ? { ...it, status, note: note || it.note } : it)));
@@ -850,6 +860,12 @@ function SermonArchive({ user, profileName, onLogout }) {
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
       try {
+        if (batchSkipDup) {
+          const dupFile = seenNames.has(file.name) ||
+            sermons.some((s) => (s.scope || "personal") === batchScope && s.fileName === file.name);
+          if (dupFile) { upd(i, "건너뜀", "이미 등록된 파일(중복)"); continue; }
+        }
+        seenNames.add(file.name);
         upd(i, "읽는 중");
         const text = await readFileText(file);
         const det = detectScripture(text || "");
@@ -937,6 +953,14 @@ function SermonArchive({ user, profileName, onLogout }) {
     const upd = recFrom(data[0], user.id);
     setSermons((prev) => prev.map((s) => (s.id === id ? upd : s)));
     return upd;
+  };
+  const deleteMany = async (ids) => {
+    setSaveState("saving");
+    const { error } = await sb.from("sermons").delete().in("id", ids);
+    if (error) { setSaveErr(error.message || ""); setSaveState("error"); return false; }
+    setSaveState("idle"); setSaveErr("");
+    setSermons((prev) => prev.filter((s) => !ids.includes(s.id)));
+    return true;
   };
   const deleteRecord = async (id) => {
     setSaveState("saving");
@@ -1065,6 +1089,10 @@ function SermonArchive({ user, profileName, onLogout }) {
       content: form.content,
       summary: form.summary.trim(),
     };
+    if (!editingId) {
+      const dup = sermons.some((s) => (s.scope || "personal") === saveScope && dupKey(s) === dupKey(rec));
+      if (dup && !window.confirm("같은 제목·날짜의 설교가 이미 등록되어 있습니다.\n중복으로 한 편 더 등록할까요?")) return;
+    }
     if (editingId) {
       const upd = await updateRecord(editingId, rec, saveScope);
       if (upd) {
@@ -1086,6 +1114,35 @@ function SermonArchive({ user, profileName, onLogout }) {
     await deleteRecord(id);
     setConfirmDel(null);
     setOpenId(null);
+  };
+
+  /* ── 선택 삭제 · 중복 표시 ── */
+  const [selMode, setSelMode] = useState(false);
+  const [selIds, setSelIds] = useState(new Set());
+  const dupCounts = useMemo(() => {
+    const m = {};
+    sermons.forEach((s) => {
+      const k = (s.scope || "personal") + "::" + dupKey(s);
+      m[k] = (m[k] || 0) + 1;
+    });
+    return m;
+  }, [sermons]);
+  const isDup = (s) => (dupCounts[(s.scope || "personal") + "::" + dupKey(s)] || 0) > 1;
+  const selectDups = () => {
+    const groups = {};
+    sermons.forEach((s) => {
+      if ((s.scope || "personal") !== library) return;
+      const k = dupKey(s);
+      (groups[k] = groups[k] || []).push(s);
+    });
+    const ids = new Set(selIds);
+    Object.values(groups).forEach((arr) => {
+      if (arr.length > 1) {
+        /* 가장 먼저 등록된 한 편(배열의 마지막)만 남기고 선택 */
+        arr.slice(0, -1).forEach((s) => { if (s.mine) ids.add(s.id); });
+      }
+    });
+    setSelIds(ids);
   };
 
   /* ── 백업 내보내기 / 가져오기 ── */
@@ -1127,9 +1184,25 @@ function SermonArchive({ user, profileName, onLogout }) {
       if (!cleaned.length) {
         setImportMsg("가져올 기록이 없습니다.");
       } else {
-        const news = await insertRecords(cleaned, "personal");
-        setImportMsg(news.length + "편을 내 서재로 가져왔습니다.");
-        setLibrary("personal");
+        const dups = cleaned.filter((r) =>
+          sermons.some((s) => (s.scope || "personal") === "personal" &&
+            (dupKey(s) === dupKey(r) || (r.fileName && s.fileName === r.fileName)))
+        );
+        let toInsert = cleaned;
+        if (dups.length) {
+          const skip = window.confirm(
+            dups.length + "편이 이미 등록된 설교와 중복됩니다.\n\n확인 = 중복을 제외하고 가져오기\n취소 = 중복 포함 전부 가져오기"
+          );
+          if (skip) toInsert = cleaned.filter((r) => !dups.includes(r));
+        }
+        if (!toInsert.length) {
+          setImportMsg("모두 중복이어서 새로 가져온 기록이 없습니다.");
+        } else {
+          const news = await insertRecords(toInsert, "personal");
+          setImportMsg(news.length + "편을 내 서재로 가져왔습니다." +
+            (cleaned.length - toInsert.length > 0 ? " (중복 " + (cleaned.length - toInsert.length) + "편 제외)" : ""));
+          setLibrary("personal");
+        }
       }
     } catch (err) {
       setImportMsg("가져오기에 실패했습니다. JSON 형식의 백업/가져오기 파일인지 확인해 주세요.");
@@ -1217,8 +1290,29 @@ function SermonArchive({ user, profileName, onLogout }) {
               가져오기(JSON)
               <input type="file" accept=".json" hidden onChange={importData} />
             </label>
+            {!selMode && (
+              <button className="batch-link" disabled={!scoped.length}
+                onClick={() => { setSelMode(true); setSelIds(new Set()); setOpenId(null); }}>
+                선택 삭제
+              </button>
+            )}
           </p>
           {importMsg && <p className="ai-note" style={{ marginBottom: 12 }}>{importMsg}</p>}
+          {selMode && (
+            <div className="sel-bar">
+              <span><b>{selIds.size}편</b> 선택됨 — 카드를 눌러 선택/해제하세요 (본인 기록만 가능)</span>
+              <button className="ghost" onClick={selectDups}>중복만 자동 선택</button>
+              <button className="danger" disabled={!selIds.size}
+                onClick={async () => {
+                  if (!window.confirm(selIds.size + "편을 삭제할까요? 되돌릴 수 없습니다.")) return;
+                  const ok = await deleteMany([...selIds]);
+                  if (ok) { setSelMode(false); setSelIds(new Set()); }
+                }}>
+                선택한 설교 삭제
+              </button>
+              <button className="ghost" onClick={() => { setSelMode(false); setSelIds(new Set()); }}>취소</button>
+            </div>
+          )}
 
           {scoped.length === 0 && (
             <div className="empty">
@@ -1233,13 +1327,33 @@ function SermonArchive({ user, profileName, onLogout }) {
             {filtered.map((s) => {
               const open = openId === s.id;
               return (
-                <li key={s.id} className={"card" + (open ? " open" : "")}>
-                  <button className="card-head" onClick={() => setOpenId(open ? null : s.id)}>
-                    <div className="card-main">
-                      <span className="scripture">{scriptureLabel(s)}</span>
-                      <span className="card-title">{s.title}</span>
+                <li key={s.id} className={"card" + (open ? " open" : "") + (selMode && selIds.has(s.id) ? " selected" : "")}>
+                  <button className="card-head"
+                    onClick={() => {
+                      if (selMode) {
+                        if (!s.mine) return;
+                        setSelIds((prev) => {
+                          const n = new Set(prev);
+                          if (n.has(s.id)) n.delete(s.id); else n.add(s.id);
+                          return n;
+                        });
+                      } else {
+                        setOpenId(open ? null : s.id);
+                      }
+                    }}>
+                    <div className="card-left">
+                      {selMode && (
+                        <span className={"sel-check" + (selIds.has(s.id) ? " on" : "") + (!s.mine ? " dim" : "")}>
+                          {selIds.has(s.id) ? "✓" : ""}
+                        </span>
+                      )}
+                      <div className="card-main">
+                        <span className="scripture">{scriptureLabel(s)}</span>
+                        <span className="card-title">{s.title}</span>
+                      </div>
                     </div>
                     <div className="card-meta">
+                      {isDup(s) && <span className="season dup">중복</span>}
                       {library === "shared" && s.author && <span className="season author">{s.author}</span>}
                       {s.season && s.season !== "일반" && <span className="season">{s.season}</span>}
                       <span className="date">{s.date || "날짜 없음"}</span>
@@ -1430,6 +1544,12 @@ function SermonArchive({ user, profileName, onLogout }) {
               <option value="personal">내 서재 (나에게만 보임)</option>
               <option value="shared">공동 서재 (모든 사용자에게 보임)</option>
             </select>
+          </label>
+
+          <label className="check-line">
+            <input type="checkbox" checked={batchSkipDup} disabled={batchRunning}
+              onChange={(e) => setBatchSkipDup(e.target.checked)} />
+            <span><b>중복 파일 건너뛰기</b> — 같은 파일명으로 이미 등록된 설교는 다시 등록하지 않고 "건너뜀"으로 표시합니다. 끄면 중복이어도 모두 등록됩니다.</span>
           </label>
 
           <label className="check-line">
@@ -1960,6 +2080,17 @@ button.link:hover{text-decoration:underline}
   .book-name{font-size:10.5px}
   .stat{min-width:calc(50% - 5px)}
 }
+/* 선택 삭제 · 중복 */
+.sel-bar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;background:var(--card);
+  border:1.5px solid var(--danger);border-radius:10px;padding:10px 14px;margin-bottom:12px;font-size:13.5px}
+.card-left{display:flex;gap:10px;min-width:0;align-items:flex-start}
+.sel-check{width:22px;height:22px;border:2px solid var(--line);border-radius:6px;flex-shrink:0;
+  display:inline-flex;align-items:center;justify-content:center;font-size:14px;color:#fff;margin-top:3px}
+.sel-check.on{background:var(--danger);border-color:var(--danger)}
+.sel-check.dim{opacity:.25}
+.card.selected{border-color:var(--danger)}
+.season.dup{background:#fbe9e6;color:#b3402f;font-weight:700}
+
 /* 서재 전환 */
 .lib-bar{background:#fff;border-bottom:1px solid var(--line)}
 .lib-inner{max-width:960px;margin:0 auto;padding:10px 18px;display:flex;gap:8px}
