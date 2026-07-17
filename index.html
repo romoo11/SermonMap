@@ -66,14 +66,15 @@ const SEASON_ORDER = [
   "신년/송구영신", "특별집회/부흥회", "일반",
 ];
 
-const SERVICE_TYPES = ["미지정", "주일 오전 예배", "수요 예배", "금요 예배", "심방 예배", "새벽 예배"];
-const SERVICE_ORDER = ["주일 오전 예배", "수요 예배", "금요 예배", "심방 예배", "새벽 예배", "미지정"];
+const SERVICE_TYPES = ["미지정", "주일 오전 예배", "주일 오후 예배", "수요 예배", "금요 예배", "심방 예배", "새벽 예배"];
+const SERVICE_ORDER = ["주일 오전 예배", "주일 오후 예배", "수요 예배", "금요 예배", "심방 예배", "새벽 예배", "미지정"];
 function guessService(fileName, text) {
   const src = (fileName || "") + " " + (text || "").slice(0, 400);
   if (/수요/.test(src)) return "수요 예배";
   if (/금요/.test(src)) return "금요 예배";
   if (/새벽/.test(src)) return "새벽 예배";
   if (/심방/.test(src)) return "심방 예배";
+  if (/오후\s*예배|저녁\s*예배|주일\s*오후|주일오후/.test(src)) return "주일 오후 예배";
   if (/주일|오전\s*예배|낮\s*예배/.test(src)) return "주일 오전 예배";
   return "미지정";
 }
@@ -1268,6 +1269,29 @@ function SermonArchive({ user, profileName, onLogout }) {
     e.target.value = "";
   };
 
+  /* 기존 기록의 파일명·제목으로 예배 형태 일괄 자동 지정 */
+  const autoAssignServices = async () => {
+    const cands = sermons
+      .filter((s) => s.mine !== false && (!s.service || s.service === "미지정"))
+      .map((s) => ({
+        id: s.id,
+        g: guessService((s.fileName || "") + " " + (s.title || ""), (s.content || "").slice(0, 400)),
+      }))
+      .filter((x) => x.g !== "미지정");
+    if (!cands.length) { setImportMsg("자동으로 지정할 수 있는 설교가 없습니다 (파일명·제목에 예배 이름이 없는 경우입니다)."); return; }
+    setImportMsg("예배 형태 자동 지정 중… (" + cands.length + "편, 잠시 기다려 주세요)");
+    let done = 0;
+    for (const c of cands) {
+      const { error } = await sb.from("sermons").update({ service: c.g }).eq("id", c.id);
+      if (!error) done++;
+    }
+    setSermons((prev) => prev.map((p) => {
+      const c = cands.find((x) => x.id === p.id);
+      return c ? { ...p, service: c.g } : p;
+    }));
+    setImportMsg(done + "편의 예배 형태를 자동 지정했습니다. 예배 지도에서 확인해 보세요.");
+  };
+
   const scriptureLabel = (s) =>
     s.book ? `${s.book}${s.ref ? " " + s.ref : ""}` : "본문 미기록";
 
@@ -1369,6 +1393,7 @@ function SermonArchive({ user, profileName, onLogout }) {
                 선택 삭제
               </button>
             )}
+            <button className="batch-link" onClick={autoAssignServices}>예배 형태 자동 지정</button>
           </p>
           {importMsg && <p className="ai-note" style={{ marginBottom: 12 }}>{importMsg}</p>}
           {selMode && (
