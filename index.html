@@ -66,6 +66,18 @@ const SEASON_ORDER = [
   "신년/송구영신", "특별집회/부흥회", "일반",
 ];
 
+const SERVICE_TYPES = ["미지정", "주일 오전 예배", "수요 예배", "금요 예배", "심방 예배", "새벽 예배"];
+const SERVICE_ORDER = ["주일 오전 예배", "수요 예배", "금요 예배", "심방 예배", "새벽 예배", "미지정"];
+function guessService(fileName, text) {
+  const src = (fileName || "") + " " + (text || "").slice(0, 400);
+  if (/수요/.test(src)) return "수요 예배";
+  if (/금요/.test(src)) return "금요 예배";
+  if (/새벽/.test(src)) return "새벽 예배";
+  if (/심방/.test(src)) return "심방 예배";
+  if (/주일|오전\s*예배|낮\s*예배/.test(src)) return "주일 오전 예배";
+  return "미지정";
+}
+
 const STORAGE_KEY = "sermon-archive-v1";
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 
@@ -380,6 +392,7 @@ async function aiExtract(text) {
   "book": "주 본문 성경 이름. 반드시 다음 중 하나여야 함: ${BOOK_NAMES.join(", ")}. 없으면 빈 문자열",
   "ref": "장절 표기, 예: 3:16-20 (없으면 빈 문자열)",
   "season": "교회 절기. 반드시 다음 중 하나: ${SEASONS.join(", ")}",
+  "service": "예배 형태. 반드시 다음 중 하나: ${SERVICE_TYPES.join(", ")} (판단이 어려우면 미지정)",
   "tags": ["핵심 주제 태그 3~5개, 각각 2~6자"],
   "summary": "설교의 핵심 메시지 3~4문장 요약"
 }
@@ -421,7 +434,7 @@ ${text}`;
 
 const EMPTY_FORM = {
   title: "", date: "", book: "", ref: "", season: "일반",
-  tags: "", fileName: "", content: "", summary: "",
+  tags: "", fileName: "", content: "", summary: "", service: "미지정",
 };
 
 /* ── 커버리지 색 (설교 횟수 → 잉크 농도) ───────────────── */
@@ -488,6 +501,7 @@ function rowFrom(r, scope, authorName) {
     book: cleanText(r.book),
     ref: cleanText(r.ref),
     season: cleanText(r.season) || "일반",
+    service: cleanText(r.service) || "미지정",
     tags: Array.isArray(r.tags) ? r.tags.map(cleanText).filter(Boolean) : [],
     file_name: cleanText(r.fileName),
     content: cleanText(r.content),
@@ -502,6 +516,7 @@ function recFrom(row, myId) {
     book: row.book || "",
     ref: row.ref || "",
     season: row.season || "일반",
+    service: row.service || "미지정",
     tags: Array.isArray(row.tags) ? row.tags : [],
     fileName: row.file_name || "",
     content: row.content || "",
@@ -756,9 +771,12 @@ function SermonArchive({ user, profileName, onLogout }) {
   const [editingId, setEditingId] = useState(null);
   const [form, setForm] = useState(EMPTY_FORM);
   const [query, setQuery] = useState("");
+  const [searchScope, setSearchScope] = useState("all"); /* all | meta */
   const [fYear, setFYear] = useState("전체");
   const [fSeason, setFSeason] = useState("전체");
   const [fTag, setFTag] = useState("전체");
+  const [fState, setFState] = useState("전체"); /* 전체 | 미분석 */
+  const [fService, setFService] = useState("전체");
   const [openId, setOpenId] = useState(null);
   const [mapBook, setMapBook] = useState(null);
   const [confirmDel, setConfirmDel] = useState(null);
@@ -800,6 +818,7 @@ function SermonArchive({ user, profileName, onLogout }) {
         date: f.date || guessDate(name, text),
         book: f.book || (det ? det.book : ""),
         ref: f.ref.trim() ? f.ref : (det ? det.ref : ""),
+        service: (f.service && f.service !== "미지정") ? f.service : guessService(name, text),
       }));
       setFileMsg("내용을 불러왔습니다. 이어서 자동 분석 중…");
       await runAnalysis(text);
@@ -826,6 +845,8 @@ function SermonArchive({ user, profileName, onLogout }) {
         book: f.book || normalizeBook(p.book),
         ref: f.ref.trim() ? f.ref : (p.ref || ""),
         season: SEASONS.includes(p.season) ? p.season : f.season,
+        service: (f.service && f.service !== "미지정") ? f.service
+          : (SERVICE_TYPES.includes(p.service) ? p.service : f.service),
         tags: f.tags.trim() ? f.tags : (Array.isArray(p.tags) ? p.tags.join(", ") : ""),
         summary: p.summary || f.summary,
       }));
@@ -876,6 +897,7 @@ function SermonArchive({ user, profileName, onLogout }) {
           book: det ? det.book : "",
           ref: det ? det.ref : "",
           season: "일반",
+          service: guessService(file.name, text),
           tags: [], fileName: file.name, content: text || "", summary: "",
         };
         let note = "";
@@ -890,6 +912,7 @@ function SermonArchive({ user, profileName, onLogout }) {
               book: normalizeBook(p.book) || rec.book,
               ref: p.ref || rec.ref,
               season: SEASONS.includes(p.season) ? p.season : "일반",
+              service: SERVICE_TYPES.includes(p.service) && p.service !== "미지정" ? p.service : rec.service,
               tags: Array.isArray(p.tags) ? p.tags : [],
               summary: p.summary || "",
             };
@@ -989,7 +1012,12 @@ function SermonArchive({ user, profileName, onLogout }) {
         if (fYear !== "전체" && (s.date || "").slice(0, 4) !== fYear) return false;
         if (fSeason !== "전체" && s.season !== fSeason) return false;
         if (fTag !== "전체" && !(s.tags || []).includes(fTag)) return false;
+        if (fState === "미분석" && (s.summary || "").trim()) return false;
+        if (fState === "본문미기록" && s.book) return false;
+        if (fService !== "전체" && (s.service || "미지정") !== fService) return false;
         if (!q) return true;
+        const metaHay = [s.title, s.book, s.ref, s.fileName].join(" ").toLowerCase();
+        if (searchScope === "meta") return metaHay.includes(q);
         const hay = [
           s.title, s.book, s.ref, s.fileName, s.content, s.summary,
           (s.tags || []).join(" "), s.season,
@@ -997,7 +1025,14 @@ function SermonArchive({ user, profileName, onLogout }) {
         return hay.includes(q);
       })
       .sort((a, b) => (b.date || "").localeCompare(a.date || ""));
-  }, [scoped, query, fYear, fSeason, fTag]);
+  }, [scoped, query, searchScope, fYear, fSeason, fTag, fState, fService]);
+
+  /* 검색어가 제목·성경·장절·파일명에서 일치하는지 (아니면 내용에서만 일치) */
+  const metaMatch = (s) => {
+    const q = query.trim().toLowerCase();
+    if (!q) return true;
+    return [s.title, s.book, s.ref, s.fileName].join(" ").toLowerCase().includes(q);
+  };
 
   const bookCounts = useMemo(() => {
     const m = {};
@@ -1044,6 +1079,26 @@ function SermonArchive({ user, profileName, onLogout }) {
     }
     return best;
   }, [seasonCounts]);
+
+  const serviceCounts = useMemo(() => {
+    const m = {};
+    scoped.forEach((s) => {
+      const k = s.service && SERVICE_TYPES.includes(s.service) ? s.service : "미지정";
+      m[k] = (m[k] || 0) + 1;
+    });
+    return m;
+  }, [scoped]);
+  const [serviceSel, setServiceSel] = useState(null);
+  const maxService = Math.max(1, ...Object.values(serviceCounts));
+  const svcAssigned = scoped.length - (serviceCounts["미지정"] || 0);
+  const topService = useMemo(() => {
+    let best = null;
+    for (const s of SERVICE_ORDER) {
+      if (s === "미지정") continue;
+      if (serviceCounts[s] && (!best || serviceCounts[s] > serviceCounts[best])) best = s;
+    }
+    return best;
+  }, [serviceCounts]);
   const topicSermons = useMemo(() => {
     if (!topicSel) return [];
     let match;
@@ -1068,7 +1123,8 @@ function SermonArchive({ user, profileName, onLogout }) {
   const startEdit = (s) => {
     setForm({
       title: s.title || "", date: s.date || "", book: s.book || "", ref: s.ref || "",
-      season: s.season || "일반", tags: (s.tags || []).join(", "),
+      season: s.season || "일반", service: s.service || "미지정",
+      tags: (s.tags || []).join(", "),
       fileName: s.fileName || "", content: s.content || "", summary: s.summary || "",
     });
     setEditingId(s.id);
@@ -1084,6 +1140,7 @@ function SermonArchive({ user, profileName, onLogout }) {
       book: form.book,
       ref: form.ref.trim(),
       season: form.season,
+      service: form.service || "미지정",
       tags: form.tags.split(",").map((t) => t.trim()).filter(Boolean),
       fileName: form.fileName.trim(),
       content: form.content,
@@ -1176,6 +1233,7 @@ function SermonArchive({ user, profileName, onLogout }) {
           book: BOOK_NAMES.includes(r.book) ? r.book : "",
           ref: String(r.ref || ""),
           season: SEASONS.includes(r.season) ? r.season : "일반",
+          service: SERVICE_TYPES.includes(r.service) ? r.service : "미지정",
           tags: Array.isArray(r.tags) ? r.tags.map(String) : [],
           fileName: String(r.fileName || ""),
           content: String(r.content || ""),
@@ -1232,6 +1290,7 @@ function SermonArchive({ user, profileName, onLogout }) {
             <button className={view === "map" ? "on" : ""} onClick={() => { setMapBook(null); setView("map"); }}>성경 지도</button>
             <button className={view === "topics" ? "on" : ""} onClick={() => { setTopicSel(null); setView("topics"); }}>주제 지도</button>
             <button className={view === "seasons" ? "on" : ""} onClick={() => { setSeasonSel(null); setView("seasons"); }}>절기 지도</button>
+            <button className={view === "services" ? "on" : ""} onClick={() => { setServiceSel(null); setView("services"); }}>예배 지도</button>
             <button className="new-btn" onClick={startNew}>+ 새 설교</button>
             <button className="logout-btn" onClick={onLogout} title="로그아웃">{profileName} · 로그아웃</button>
           </nav>
@@ -1263,6 +1322,10 @@ function SermonArchive({ user, profileName, onLogout }) {
               onChange={(e) => setQuery(e.target.value)}
             />
             <div className="filters">
+              <select value={searchScope} onChange={(e) => setSearchScope(e.target.value)}>
+                <option value="all">검색: 전체 (설교 내용 포함)</option>
+                <option value="meta">검색: 제목·본문 말씀만</option>
+              </select>
               <select value={fYear} onChange={(e) => setFYear(e.target.value)}>
                 {years.map((y) => <option key={y}>{y === "전체" ? "연도: 전체" : y + "년"}</option>)}
               </select>
@@ -1270,8 +1333,18 @@ function SermonArchive({ user, profileName, onLogout }) {
                 <option>전체</option>
                 {SEASONS.map((s) => <option key={s}>{s}</option>)}
               </select>
+              <select value={fService} onChange={(e) => setFService(e.target.value)}>
+                <option value="전체">예배: 전체</option>
+                {SERVICE_TYPES.filter((s) => s !== "미지정").map((s) => <option key={s}>{s}</option>)}
+                <option value="미지정">미지정</option>
+              </select>
               <select value={fTag} onChange={(e) => setFTag(e.target.value)}>
                 {allTags.map((t) => <option key={t}>{t === "전체" ? "태그: 전체" : "#" + t}</option>)}
+              </select>
+              <select value={fState} onChange={(e) => setFState(e.target.value)}>
+                <option value="전체">상태: 전체</option>
+                <option value="미분석">AI 미분석 (요약 없음)</option>
+                <option value="본문미기록">본문 미기록 (말씀 없음)</option>
               </select>
             </div>
           </div>
@@ -1353,7 +1426,11 @@ function SermonArchive({ user, profileName, onLogout }) {
                       </div>
                     </div>
                     <div className="card-meta">
+                      {query.trim() && searchScope === "all" && !metaMatch(s) &&
+                        <span className="season content-hit">내용 일치</span>}
                       {isDup(s) && <span className="season dup">중복</span>}
+                      {!(s.summary || "").trim() && <span className="season noai">미분석</span>}
+                      {s.service && s.service !== "미지정" && <span className="season svc">{s.service}</span>}
                       {library === "shared" && s.author && <span className="season author">{s.author}</span>}
                       {s.season && s.season !== "일반" && <span className="season">{s.season}</span>}
                       <span className="date">{s.date || "날짜 없음"}</span>
@@ -1473,6 +1550,13 @@ function SermonArchive({ user, profileName, onLogout }) {
               </select>
             </label>
           </div>
+
+          <label className="field">
+            <span>예배 형태</span>
+            <select value={form.service} onChange={(e) => setForm({ ...form, service: e.target.value })}>
+              {SERVICE_TYPES.map((s) => <option key={s}>{s}</option>)}
+            </select>
+          </label>
 
           <div className="row">
             <label className="field">
@@ -1809,6 +1893,87 @@ function SermonArchive({ user, profileName, onLogout }) {
         </main>
       )}
 
+      {/* ───────── 예배 지도 ───────── */}
+      {loaded && view === "services" && (
+        <main className="container">
+          <h2 className="page-title">예배 지도</h2>
+          <p className="map-sub">예배 형태별 설교 분포입니다. 색이 진할수록 그 예배에서 설교를 많이 하셨습니다.</p>
+
+          <div className="stat-row">
+            <div className="stat"><b>{scoped.length}</b><span>전체 설교</span></div>
+            <div className="stat">
+              <b>{scoped.length ? Math.round((svcAssigned / scoped.length) * 100) : 0}%</b>
+              <span>예배 형태 지정 비중</span>
+            </div>
+            <div className="stat">
+              <b>{topService || "—"}</b>
+              <span>가장 많은 예배{topService ? ` (${serviceCounts[topService]}편)` : ""}</span>
+            </div>
+            <div className="stat"><b>{serviceCounts["미지정"] || 0}</b><span>미지정</span></div>
+          </div>
+
+          <div className="spine-wrap">
+            <div className="spine-labels"><span>예배 형태</span><span>미지정</span></div>
+            <div className="spine" role="img" aria-label="예배 형태별 설교 분포">
+              {SERVICE_ORDER.map((s) => (
+                <button
+                  key={s}
+                  className={"spine-seg" + (serviceSel === s ? " sel" : "") + (s === "미지정" ? " nt-start" : "")}
+                  style={{ flexGrow: 1, background: heat(serviceCounts[s], maxService) }}
+                  title={`${s} · ${serviceCounts[s] || 0}편`}
+                  onClick={() => setServiceSel(serviceSel === s ? null : s)}
+                />
+              ))}
+            </div>
+            <div className="spine-legend">
+              <span>적음</span>
+              <span className="legend-cells">
+                {[0, 0.25, 0.5, 0.75, 1].map((t) => (
+                  <i key={t} style={{ background: t === 0 ? "var(--cell-empty)" : heat(t * maxService, maxService) }} />
+                ))}
+              </span>
+              <span>많음</span>
+            </div>
+          </div>
+
+          <div className="book-grid">
+            {SERVICE_ORDER.map((s) => (
+              <button key={s}
+                className={"book-cell" + (serviceSel === s ? " sel" : "")}
+                style={{ background: heat(serviceCounts[s], maxService) }}
+                onClick={() => setServiceSel(serviceSel === s ? null : s)}>
+                <span className={"book-name" + ((serviceCounts[s] || 0) / maxService > 0.5 ? " inv" : "")}>
+                  {s}{serviceCounts[s] ? ` ${serviceCounts[s]}` : ""}
+                </span>
+              </button>
+            ))}
+          </div>
+
+          {serviceSel && (
+            <div className="book-detail">
+              <h3>{serviceSel} <small>{serviceCounts[serviceSel] || 0}편</small></h3>
+              {(serviceCounts[serviceSel] || 0) === 0 ? (
+                <p className="muted">아직 이 예배로 기록된 설교가 없습니다.</p>
+              ) : (
+                <ul>
+                  {scoped
+                    .filter((s) => (s.service && SERVICE_TYPES.includes(s.service) ? s.service : "미지정") === serviceSel)
+                    .sort((a, b) => (b.date || "").localeCompare(a.date || ""))
+                    .map((s) => (
+                      <li key={s.id}>
+                        <button className="link" onClick={() => { setView("list"); setOpenId(s.id); setQuery(""); setFYear("전체"); setFSeason("전체"); setFTag("전체"); }}>
+                          <span className="scripture">{scriptureLabel(s)}</span> {s.title}
+                          <span className="date"> · {s.date || "날짜 없음"}</span>
+                        </button>
+                      </li>
+                    ))}
+                </ul>
+              )}
+            </div>
+          )}
+        </main>
+      )}
+
       {/* ───────── 성경 지도 ───────── */}
       {loaded && view === "map" && (
         <main className="container">
@@ -2090,6 +2255,9 @@ button.link:hover{text-decoration:underline}
 .sel-check.dim{opacity:.25}
 .card.selected{border-color:var(--danger)}
 .season.dup{background:#fbe9e6;color:#b3402f;font-weight:700}
+.season.content-hit{background:#eef1f5;color:#5a6a7d}
+.season.noai{background:#f3ead2;color:#8a6d1f}
+.season.svc{background:#e2eef2;color:#2f5d6b}
 
 /* 서재 전환 */
 .lib-bar{background:#fff;border-bottom:1px solid var(--line)}
