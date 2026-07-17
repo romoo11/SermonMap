@@ -68,6 +68,14 @@ const SEASON_ORDER = [
 
 const SERVICE_TYPES = ["미지정", "주일 오전 예배", "주일 오후 예배", "수요 예배", "금요 예배", "심방 예배", "새벽 예배"];
 const SERVICE_ORDER = ["주일 오전 예배", "주일 오후 예배", "수요 예배", "금요 예배", "심방 예배", "새벽 예배", "미지정"];
+function looksGarbled(text) {
+  if (!text) return true;
+  const total = text.replace(/\s/g, "").length;
+  if (total < 40) return true;
+  const ko = (text.match(/[가-힣]/g) || []).length;
+  return ko / total < 0.1;
+}
+
 function guessService(fileName, text) {
   const src = (fileName || "") + " " + (text || "").slice(0, 400);
   if (/수요/.test(src)) return "수요 예배";
@@ -505,6 +513,7 @@ function rowFrom(r, scope, authorName) {
     service: cleanText(r.service) || "미지정",
     tags: Array.isArray(r.tags) ? r.tags.map(cleanText).filter(Boolean) : [],
     file_name: cleanText(r.fileName),
+    file_path: cleanText(r.filePath),
     content: cleanText(r.content),
     summary: cleanText(r.summary),
   };
@@ -520,6 +529,7 @@ function recFrom(row, myId) {
     service: row.service || "미지정",
     tags: Array.isArray(row.tags) ? row.tags : [],
     fileName: row.file_name || "",
+    filePath: row.file_path || "",
     content: row.content || "",
     summary: row.summary || "",
     scope: row.scope || "personal",
@@ -782,6 +792,19 @@ function SermonArchive({ user, profileName, onLogout }) {
   const [mapBook, setMapBook] = useState(null);
   const [confirmDel, setConfirmDel] = useState(null);
   const [fileMsg, setFileMsg] = useState("");
+  const [pendingFile, setPendingFile] = useState(null); /* 등록할 원본 파일 */
+  const [editFilePath, setEditFilePath] = useState("");
+  const [pdfView, setPdfView] = useState(null); /* {id, url} */
+
+  const uploadOriginal = async (file) => {
+    try {
+      const ext = ((file.name || "").match(/\.[A-Za-z0-9]+$/) || [""])[0].toLowerCase();
+      const path = user.id + "/" + uid() + ext;
+      const { error } = await sb.storage.from("sermons").upload(path, file, { upsert: false });
+      if (error) return "";
+      return path;
+    } catch (e) { return ""; }
+  };
   const [analyzing, setAnalyzing] = useState(false);
   const [aiError, setAiError] = useState("");
 
@@ -796,6 +819,7 @@ function SermonArchive({ user, profileName, onLogout }) {
     e.target.value = "";
     try {
       if (lower.endsWith(".hwp")) {
+        setPendingFile(file);
         setForm((f) => ({ ...f, fileName: f.fileName || name, date: f.date || guessDate(name, "") }));
         setFileMsg("일반 한글(.hwp) 파일은 브라우저에서 직접 읽을 수 없습니다. 한글 프로그램에서 '다른 이름으로 저장'으로 HWPX나 Word(.docx)로 저장한 뒤 올려주세요. 파일명과 날짜는 기록해 두었습니다.");
         return;
@@ -804,8 +828,14 @@ function SermonArchive({ user, profileName, onLogout }) {
         setFileMsg("지원하지 않는 형식입니다. 워드(.docx), 한글(.hwpx), PDF, 텍스트(.txt) 파일을 올려주세요.");
         return;
       }
+      setPendingFile(file);
       setFileMsg("파일을 읽는 중…");
-      const text = await readFileText(file);
+      let text = await readFileText(file);
+      if (lower.endsWith(".pdf") && text && looksGarbled(text)) {
+        setForm((f) => ({ ...f, fileName: f.fileName || name, date: f.date || guessDate(name, "") }));
+        setFileMsg("이 PDF는 글자 정보가 손상되어 내용을 읽을 수 없습니다 (한글에서 만든 일부 PDF의 특성). 원본 한글(.hwp) 파일을 Claude 대화에 올려 변환받거나, 한글에서 PDF로 다시 저장해 보세요. 파일명과 날짜는 기록해 두었습니다.");
+        return;
+      }
       if (!text) {
         setForm((f) => ({ ...f, fileName: f.fileName || name, date: f.date || guessDate(name, "") }));
         setFileMsg("이 파일에서 글자를 찾지 못했습니다. 스캔본(이미지) PDF일 수 있으니 내용을 직접 붙여넣어 주세요.");
@@ -889,7 +919,12 @@ function SermonArchive({ user, profileName, onLogout }) {
         }
         seenNames.add(file.name);
         upd(i, "읽는 중");
-        const text = await readFileText(file);
+        let text = await readFileText(file);
+        let garbled = false;
+        if (file.name.toLowerCase().endsWith(".pdf") && text && looksGarbled(text)) {
+          text = "";
+          garbled = true;
+        }
         const det = detectScripture(text || "");
         let rec = {
           id: uid(),
@@ -922,9 +957,12 @@ function SermonArchive({ user, profileName, onLogout }) {
           }
           if (i < files.length - 1) await new Promise((r) => setTimeout(r, 800));
         } else if (batchUseAI && !text) {
-          note = "글자를 찾지 못해 파일명만 저장됨";
+          note = garbled ? "글자 정보 손상 PDF — 파일명만 저장됨 (원본 hwp 변환 필요)" : "글자를 찾지 못해 파일명만 저장됨";
         }
+        if (garbled && !note) note = "글자 정보 손상 PDF — 파일명만 저장됨 (원본 hwp 변환 필요)";
         if (!note && !rec.book) note = "본문 말씀을 찾지 못함 — 수정에서 채워주세요";
+        const fp = await uploadOriginal(file);
+        if (fp) rec.filePath = fp;
         newRecords.push(rec);
         upd(i, "완료", note);
       } catch (e) {
@@ -983,15 +1021,23 @@ function SermonArchive({ user, profileName, onLogout }) {
     const { error } = await sb.from("sermons").delete().in("id", ids);
     if (error) { setSaveErr(error.message || ""); setSaveState("error"); return false; }
     setSaveState("idle"); setSaveErr("");
+    const paths = sermons.filter((s) => ids.includes(s.id) && s.filePath).map((s) => s.filePath);
     setSermons((prev) => prev.filter((s) => !ids.includes(s.id)));
+    if (paths.length) {
+      try { await sb.storage.from("sermons").remove(paths); } catch (e) {}
+    }
     return true;
   };
   const deleteRecord = async (id) => {
     setSaveState("saving");
+    const target = sermons.find((s) => s.id === id);
     const { error } = await sb.from("sermons").delete().eq("id", id);
     if (error) { setSaveErr(error.message || ""); setSaveState("error"); return; }
     setSaveState("idle"); setSaveErr("");
     setSermons((prev) => prev.filter((s) => s.id !== id));
+    if (target && target.filePath) {
+      try { await sb.storage.from("sermons").remove([target.filePath]); } catch (e) {}
+    }
   };
 
   /* ── 파생 데이터 ── */
@@ -1120,7 +1166,7 @@ function SermonArchive({ user, profileName, onLogout }) {
   const withBook = otSermons + ntSermons;
 
   /* ── 폼 동작 ── */
-  const startNew = () => { setForm(EMPTY_FORM); setEditingId(null); setSaveScope(library); setView("form"); };
+  const startNew = () => { setForm(EMPTY_FORM); setEditingId(null); setSaveScope(library); setPendingFile(null); setEditFilePath(""); setView("form"); };
   const startEdit = (s) => {
     setForm({
       title: s.title || "", date: s.date || "", book: s.book || "", ref: s.ref || "",
@@ -1130,6 +1176,8 @@ function SermonArchive({ user, profileName, onLogout }) {
     });
     setEditingId(s.id);
     setSaveScope(s.scope || "personal");
+    setPendingFile(null);
+    setEditFilePath(s.filePath || "");
     setView("form");
   };
 
@@ -1151,6 +1199,13 @@ function SermonArchive({ user, profileName, onLogout }) {
       const dup = sermons.some((s) => (s.scope || "personal") === saveScope && dupKey(s) === dupKey(rec));
       if (dup && !window.confirm("같은 제목·날짜의 설교가 이미 등록되어 있습니다.\n중복으로 한 편 더 등록할까요?")) return;
     }
+    let fp = editingId ? editFilePath : "";
+    if (pendingFile) {
+      const up = await uploadOriginal(pendingFile);
+      if (up) fp = up;
+    }
+    rec.filePath = fp;
+    setPendingFile(null);
     if (editingId) {
       const upd = await updateRecord(editingId, rec, saveScope);
       if (upd) {
@@ -1237,6 +1292,7 @@ function SermonArchive({ user, profileName, onLogout }) {
           service: SERVICE_TYPES.includes(r.service) ? r.service : "미지정",
           tags: Array.isArray(r.tags) ? r.tags.map(String) : [],
           fileName: String(r.fileName || ""),
+          filePath: String(r.filePath || ""),
           content: String(r.content || ""),
           summary: String(r.summary || ""),
         }));
@@ -1471,6 +1527,30 @@ function SermonArchive({ user, profileName, onLogout }) {
                         </div>
                       )}
                       {s.fileName && <p className="file-line">원본 파일: <code>{s.fileName}</code></p>}
+                      {s.filePath && (
+                        <div className="orig-row">
+                          <button className="ghost" onClick={async () => {
+                            if (pdfView && pdfView.id === s.id) { setPdfView(null); return; }
+                            const { data, error } = await sb.storage.from("sermons").createSignedUrl(s.filePath, 3600);
+                            if (error || !data) { setSaveErr("원문 주소를 만들지 못했습니다"); setSaveState("error"); return; }
+                            if (/\.pdf$/i.test(s.filePath)) {
+                              setPdfView({ id: s.id, url: data.signedUrl });
+                            } else {
+                              window.open(data.signedUrl, "_blank");
+                            }
+                          }}>
+                            {/\.pdf$/i.test(s.filePath)
+                              ? (pdfView && pdfView.id === s.id ? "원문 닫기" : "📄 원문 PDF 보기")
+                              : "원본 파일 내려받기"}
+                          </button>
+                          {pdfView && pdfView.id === s.id && (
+                            <a className="batch-link" href={pdfView.url} target="_blank" rel="noreferrer">새 탭에서 크게 보기</a>
+                          )}
+                        </div>
+                      )}
+                      {pdfView && pdfView.id === s.id && (
+                        <iframe className="pdf-frame" src={pdfView.url} title="원문 PDF" />
+                      )}
                       {s.summary && <div className="summary"><b>요약</b>{s.summary}</div>}
                       {s.content
                         ? <div className="content">{s.content}</div>
@@ -2283,6 +2363,8 @@ button.link:hover{text-decoration:underline}
 .season.content-hit{background:#eef1f5;color:#5a6a7d}
 .season.noai{background:#f3ead2;color:#8a6d1f}
 .season.svc{background:#e2eef2;color:#2f5d6b}
+.orig-row{display:flex;gap:12px;align-items:center;margin-bottom:10px;flex-wrap:wrap}
+.pdf-frame{width:100%;height:540px;border:1px solid var(--line);border-radius:10px;margin-bottom:12px;background:#fff}
 
 /* 서재 전환 */
 .lib-bar{background:#fff;border-bottom:1px solid var(--line)}
