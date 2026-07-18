@@ -1325,27 +1325,47 @@ function SermonArchive({ user, profileName, onLogout }) {
     e.target.value = "";
   };
 
-  /* 기존 기록의 파일명·제목으로 예배 형태 일괄 자동 지정 */
+  /* 기존 기록의 파일명·제목으로 예배 형태 일괄 자동 지정 (진행률·오류 표시) */
   const autoAssignServices = async () => {
-    const cands = sermons
-      .filter((s) => s.mine !== false && (!s.service || s.service === "미지정"))
-      .map((s) => ({
-        id: s.id,
-        g: guessService((s.fileName || "") + " " + (s.title || ""), (s.content || "").slice(0, 400)),
-      }))
-      .filter((x) => x.g !== "미지정");
-    if (!cands.length) { setImportMsg("자동으로 지정할 수 있는 설교가 없습니다 (파일명·제목에 예배 이름이 없는 경우입니다)."); return; }
-    setImportMsg("예배 형태 자동 지정 중… (" + cands.length + "편, 잠시 기다려 주세요)");
-    let done = 0;
-    for (const c of cands) {
-      const { error } = await sb.from("sermons").update({ service: c.g }).eq("id", c.id);
-      if (!error) done++;
+    try {
+      const cands = sermons
+        .filter((s) => s.mine !== false && (!s.service || s.service === "미지정"))
+        .map((s) => ({
+          id: s.id,
+          g: guessService((s.fileName || "") + " " + (s.title || ""), (s.content || "").slice(0, 400)),
+        }))
+        .filter((x) => x.g !== "미지정");
+      if (!cands.length) {
+        setImportMsg("자동으로 지정할 수 있는 설교가 없습니다 (파일명·제목에 예배 이름이 없는 경우입니다).");
+        return;
+      }
+      let done = 0;
+      let failMsg = "";
+      const okIds = {};
+      for (let i = 0; i < cands.length; i++) {
+        const c = cands[i];
+        if (i % 5 === 0 || i === cands.length - 1) {
+          setImportMsg("예배 형태 자동 지정 중… " + (i + 1) + " / " + cands.length + "편 — 완료될 때까지 이 화면에 머물러 주세요");
+        }
+        try {
+          const { error } = await sb.from("sermons").update({ service: c.g }).eq("id", c.id);
+          if (error) { if (!failMsg) failMsg = error.message || "알 수 없는 오류"; }
+          else { done++; okIds[c.id] = c.g; }
+        } catch (e) {
+          if (!failMsg) failMsg = (e && e.message) || "네트워크 오류";
+        }
+      }
+      setSermons((prev) => prev.map((p) => (okIds[p.id] ? { ...p, service: okIds[p.id] } : p)));
+      if (done === cands.length) {
+        setImportMsg("완료 — " + done + "편의 예배 형태를 자동 지정했습니다. 예배 지도에서 확인해 보세요.");
+      } else {
+        setImportMsg("일부만 완료 — " + done + "/" + cands.length + "편 지정됨" +
+          (failMsg ? " (실패 원인: " + failMsg + ")" : "") +
+          ". 버튼을 다시 누르면 남은 것부터 이어서 진행합니다.");
+      }
+    } catch (e) {
+      setImportMsg("자동 지정 중 오류: " + ((e && e.message) || "알 수 없는 오류") + " — 이 문구를 Claude에게 보여주세요.");
     }
-    setSermons((prev) => prev.map((p) => {
-      const c = cands.find((x) => x.id === p.id);
-      return c ? { ...p, service: c.g } : p;
-    }));
-    setImportMsg(done + "편의 예배 형태를 자동 지정했습니다. 예배 지도에서 확인해 보세요.");
   };
 
   const scriptureLabel = (s) =>
