@@ -790,6 +790,15 @@ function SermonArchive({ user, profileName, onLogout }) {
   const [fService, setFService] = useState("전체");
   const [openId, setOpenId] = useState(null);
   const [mapBook, setMapBook] = useState(null);
+  const [mapOpenId, setMapOpenId] = useState(null);
+  useEffect(() => {
+    if (view === "list" && openId) {
+      setTimeout(() => {
+        const el = document.getElementById("card-" + openId);
+        if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
+      }, 120);
+    }
+  }, [view, openId]);
   const [confirmDel, setConfirmDel] = useState(null);
   const [fileMsg, setFileMsg] = useState("");
   const [pendingFile, setPendingFile] = useState(null); /* 등록할 원본 파일 */
@@ -1449,6 +1458,43 @@ function SermonArchive({ user, profileName, onLogout }) {
   const scriptureLabel = (s) =>
     s.book ? `${s.book}${s.ref ? " " + s.ref : ""}` : "본문 미기록";
 
+  /* 지도 안에서 설교 내용 펼쳐 보기 */
+  const mapSermonBody = (s) => (
+    <div className="map-sermon">
+      {s.summary && <div className="summary"><b>요약</b>{s.summary}</div>}
+      {s.filePath && (
+        <div className="orig-row">
+          <button className="ghost" onClick={async () => {
+            if (pdfView && pdfView.id === s.id) { setPdfView(null); return; }
+            const { data, error } = await sb.storage.from("sermons").createSignedUrl(s.filePath, 3600);
+            if (error || !data) { setSaveErr("원문 주소를 만들지 못했습니다"); setSaveState("error"); return; }
+            if (/\.pdf$/i.test(s.filePath)) setPdfView({ id: s.id, url: data.signedUrl });
+            else window.open(data.signedUrl, "_blank");
+          }}>
+            {/\.pdf$/i.test(s.filePath)
+              ? (pdfView && pdfView.id === s.id ? "원문 닫기" : "📄 원문 PDF 보기")
+              : "원본 파일 내려받기"}
+          </button>
+          {pdfView && pdfView.id === s.id && (
+            <a className="batch-link" href={pdfView.url} target="_blank" rel="noreferrer">새 탭에서 크게 보기</a>
+          )}
+        </div>
+      )}
+      {pdfView && pdfView.id === s.id && <iframe className="pdf-frame" src={pdfView.url} title="원문 PDF" />}
+      {s.content
+        ? <div className="content">{s.content}</div>
+        : <p className="muted">저장된 본문 내용이 없습니다.</p>}
+      <div style={{ marginTop: 10 }}>
+        <button className="ghost" onClick={() => {
+          setQuery(""); setFYear("전체"); setFSeason("전체"); setFTag("전체");
+          setView("list"); setOpenId(s.id);
+        }}>
+          기록 화면에서 열기 (수정·삭제)
+        </button>
+      </div>
+    </div>
+  );
+
   /* ── 렌더 ── */
   return (
     <div className="app">
@@ -1592,7 +1638,7 @@ function SermonArchive({ user, profileName, onLogout }) {
             {filtered.map((s) => {
               const open = openId === s.id;
               return (
-                <li key={s.id} className={"card" + (open ? " open" : "") + (selMode && selIds.has(s.id) ? " selected" : "")}>
+                <li key={s.id} id={"card-" + s.id} className={"card" + (open ? " open" : "") + (selMode && selIds.has(s.id) ? " selected" : "")}>
                   <button className="card-head"
                     onClick={() => {
                       if (selMode) {
@@ -2037,10 +2083,11 @@ function SermonArchive({ user, profileName, onLogout }) {
                   <ul>
                     {topicSermons.map((s) => (
                       <li key={s.id}>
-                        <button className="link" onClick={() => { setView("list"); setOpenId(s.id); setQuery(""); setFYear("전체"); setFSeason("전체"); setFTag("전체"); }}>
+                        <button className="link" onClick={() => setMapOpenId(mapOpenId === s.id ? null : s.id)}>
                           <span className="scripture">{scriptureLabel(s)}</span> {s.title}
                           <span className="date"> · {s.date || "날짜 없음"}</span>
                         </button>
+                        {mapOpenId === s.id && mapSermonBody(s)}
                       </li>
                     ))}
                   </ul>
@@ -2124,10 +2171,11 @@ function SermonArchive({ user, profileName, onLogout }) {
                     .sort((a, b) => (b.date || "").localeCompare(a.date || ""))
                     .map((s) => (
                       <li key={s.id}>
-                        <button className="link" onClick={() => { setView("list"); setOpenId(s.id); setQuery(""); setFYear("전체"); setFSeason("전체"); setFTag("전체"); }}>
+                        <button className="link" onClick={() => setMapOpenId(mapOpenId === s.id ? null : s.id)}>
                           <span className="scripture">{scriptureLabel(s)}</span> {s.title}
                           <span className="date"> · {s.date || "날짜 없음"}</span>
                         </button>
+                        {mapOpenId === s.id && mapSermonBody(s)}
                       </li>
                     ))}
                 </ul>
@@ -2205,10 +2253,11 @@ function SermonArchive({ user, profileName, onLogout }) {
                     .sort((a, b) => (b.date || "").localeCompare(a.date || ""))
                     .map((s) => (
                       <li key={s.id}>
-                        <button className="link" onClick={() => { setView("list"); setOpenId(s.id); setQuery(""); setFYear("전체"); setFSeason("전체"); setFTag("전체"); }}>
+                        <button className="link" onClick={() => setMapOpenId(mapOpenId === s.id ? null : s.id)}>
                           <span className="scripture">{scriptureLabel(s)}</span> {s.title}
                           <span className="date"> · {s.date || "날짜 없음"}</span>
                         </button>
+                        {mapOpenId === s.id && mapSermonBody(s)}
                       </li>
                     ))}
                 </ul>
@@ -2282,10 +2331,11 @@ function SermonArchive({ user, profileName, onLogout }) {
                     .sort((a, b) => (b.date || "").localeCompare(a.date || ""))
                     .map((s) => (
                       <li key={s.id}>
-                        <button className="link" onClick={() => { setView("list"); setOpenId(s.id); setQuery(""); setFYear("전체"); setFSeason("전체"); setFTag("전체"); }}>
+                        <button className="link" onClick={() => setMapOpenId(mapOpenId === s.id ? null : s.id)}>
                           <span className="scripture">{scriptureLabel(s)}</span> {s.title}
                           <span className="date"> · {s.date || "날짜 없음"}</span>
                         </button>
+                        {mapOpenId === s.id && mapSermonBody(s)}
                       </li>
                     ))}
                 </ul>
@@ -2477,6 +2527,8 @@ button.link:hover{text-decoration:underline}
 .book-detail h3{font-family:'Noto Serif KR',serif;font-size:18px;margin-bottom:8px}
 .book-detail h3 small{font-size:13px;color:var(--muted);font-weight:400}
 .book-detail ul{list-style:none}
+.map-sermon{background:#fbfbf9;border:1px solid var(--line);border-radius:10px;
+  padding:12px 14px;margin:4px 0 12px}
 
 .foot{text-align:center;font-size:12px;color:var(--muted);padding:16px}
 
