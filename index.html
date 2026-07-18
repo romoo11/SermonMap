@@ -897,6 +897,58 @@ function SermonArchive({ user, profileName, onLogout }) {
   const [batchDone, setBatchDone] = useState(false);
 
   const [batchSkipDup, setBatchSkipDup] = useState(true);
+  const [linkItems, setLinkItems] = useState([]);
+  const [linkRunning, setLinkRunning] = useState(false);
+
+  /* 기존 기록에 원본 파일 붙이기 (파일명으로 짝 찾기) */
+  const runLink = async (files) => {
+    if (!files.length || linkRunning) return;
+    setLinkRunning(true);
+    setLinkItems(files.map((f) => ({ name: f.name, status: "대기", note: "" })));
+    const upd = (i, status, note) =>
+      setLinkItems((prev) => prev.map((it, j) => (j === i ? { ...it, status, note: note || it.note } : it)));
+    const norm = (x) => {
+      const s = x || "";
+      return s.normalize ? s.normalize("NFC") : s;
+    };
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      const fname = norm(file.name);
+      const fbase = fname.replace(/\.[^.]+$/, "");
+      const matches = sermons.filter((s) => {
+        if (s.mine === false) return false;
+        const rn = norm(s.fileName);
+        return rn === fname || rn.replace(/\.[^.]+$/, "") === fbase;
+      });
+      if (!matches.length) {
+        upd(i, "실패", "일치하는 기록 없음 — 파일명이 기록의 '원본 파일'과 같아야 합니다");
+        continue;
+      }
+      if (matches.every((m) => m.filePath)) {
+        upd(i, "건너뜀", "이미 원본이 연결되어 있음");
+        continue;
+      }
+      upd(i, "올리는 중");
+      const fp = await uploadOriginal(file);
+      if (!fp) { upd(i, "실패", "파일 업로드 실패"); continue; }
+      let ok = 0;
+      for (const m of matches) {
+        if (m.filePath) continue;
+        try {
+          const { error } = await sb.from("sermons").update({ file_path: fp }).eq("id", m.id);
+          if (!error) ok++;
+        } catch (e) { /* 개별 실패 */ }
+      }
+      if (ok) {
+        setSermons((prev) => prev.map((p) =>
+          (!p.filePath && matches.some((m) => m.id === p.id)) ? { ...p, filePath: fp } : p));
+        upd(i, "완료", ok > 1 ? ok + "개 기록에 연결됨" : "");
+      } else {
+        upd(i, "실패", "기록 갱신 실패");
+      }
+    }
+    setLinkRunning(false);
+  };
 
   const runBatch = async (files) => {
     if (!files.length || batchRunning) return;
@@ -1856,6 +1908,34 @@ function SermonArchive({ user, profileName, onLogout }) {
               </p>
               <button className="primary" onClick={() => { setLibrary(batchScope); setView("list"); }}>등록된 기록 보기</button>
             </div>
+          )}
+          <h2 className="page-title" style={{ marginTop: 40 }}>원본 파일 연결 — 원문 PDF 보기용</h2>
+          <p className="map-sub">
+            이미 등록된 설교에 원본 파일을 붙이는 기능입니다. 파일명이 기록의 '원본 파일'과 같은 설교를 찾아
+            연결만 하며, 새 기록을 만들거나 내용을 바꾸지 않습니다. 연결되면 그 설교 카드에
+            '원문 PDF 보기' 버튼이 나타납니다. (무료 · AI 분석 없음)
+          </p>
+          <div className="ai-actions">
+            <label className={"upload-btn" + (linkRunning ? " disabled" : "")}>
+              {linkRunning ? "연결 진행 중…" : "원본 파일 선택 (여러 개 가능)"}
+              <input type="file" multiple accept=".pdf,.docx,.hwpx,.hwp,.txt" hidden
+                disabled={linkRunning}
+                onChange={(e) => { runLink(Array.from(e.target.files || [])); e.target.value = ""; }} />
+            </label>
+          </div>
+          {linkItems.length > 0 && (
+            <ul className="batch-list">
+              {linkItems.map((it, i) => {
+                const key = it.status === "완료" ? "done" : it.status === "실패" ? "fail"
+                  : it.status === "대기" ? "wait" : "work";
+                return (
+                  <li key={i} className={"batch-item s-" + key}>
+                    <span className="batch-name">{it.name}</span>
+                    <span className="batch-status">{it.status}{it.note ? ` · ${it.note}` : ""}</span>
+                  </li>
+                );
+              })}
+            </ul>
           )}
         </main>
       )}
