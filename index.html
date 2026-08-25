@@ -66,7 +66,7 @@ const SEASON_ORDER = [
   "신년/송구영신", "특별집회/부흥회", "일반",
 ];
 
-const SERVICE_TYPES = ["미지정", "주일 오전 예배", "주일 오후 예배", "수요 예배", "금요 예배", "심방 예배", "새벽 예배"];
+const SERVICE_TYPES = ["미지정", "주일 오전 예배", "주일 오후 예배", "수요 예배", "금요 예배", "심방 예배", "새벽 예배", "수련회", "특별집회"];
 const SERVICE_ORDER = ["주일 오전 예배", "주일 오후 예배", "수요 예배", "금요 예배", "심방 예배", "새벽 예배", "미지정"];
 function looksGarbled(text) {
   if (!text) return true;
@@ -78,6 +78,8 @@ function looksGarbled(text) {
 
 function guessService(fileName, text) {
   const src = (fileName || "") + " " + (text || "").slice(0, 400);
+  if (/수련회|수련\s*회|캠프|하계\s*수련|동계\s*수련|여름\s*수련|겨울\s*수련/.test(src)) return "수련회";
+  if (/특별\s*집회|특별집회|부흥\s*회|부흥회|사경회|말씀\s*축제|초청\s*집회|연합\s*집회|전도\s*집회|특별\s*새벽|특새/.test(src)) return "특별집회";
   if (/수요/.test(src)) return "수요 예배";
   if (/금요/.test(src)) return "금요 예배";
   if (/새벽/.test(src)) return "새벽 예배";
