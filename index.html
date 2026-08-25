@@ -787,7 +787,7 @@ function SermonArchive({ user, profileName, onLogout }) {
   const [fSeason, setFSeason] = useState("전체");
   const [fTag, setFTag] = useState("전체");
   const [fState, setFState] = useState("전체"); /* 전체 | 미분석 */
-  const [fService, setFService] = useState("전체");
+  const [fService, setFService] = useState("전체"); const [sortMode, setSortMode] = useState("date"); /* date | relevance */ const [exService, setExService] = useState("없음");
   const [openId, setOpenId] = useState(null);
   const [mapBook, setMapBook] = useState(null);
   const [mapOpenId, setMapOpenId] = useState(null);
@@ -1149,6 +1149,29 @@ function SermonArchive({ user, profileName, onLogout }) {
     return ["전체", ...[...t].sort()];
   }, [scoped]);
 
+  /* ── 검색어를 포함어와 제외어로 나눈다 ("기도 -금요" → 포함:[기도] 제외:[금요]) ── */
+  const parseQuery = (raw) => {
+    const inc = [], exc = [];
+    String(raw || "").trim().toLowerCase().split(/\s+/).filter(Boolean).forEach((w) => {
+      if (w.length > 1 && w.startsWith("-")) exc.push(w.slice(1));
+      else inc.push(w);
+    });
+    return { inc, exc };
+  };
+  /* ── 한 설교에서 검색어가 몇 번 나오는지 센다 (제목·요약·태그는 가중치) ── */
+  const relScore = (s, words) => {
+    if (!words.length) return 0;
+    const body = String(s.content || "").toLowerCase();
+    const strong = [s.title, s.summary, (s.tags || []).join(" ")].join(" ").toLowerCase();
+    let n = 0;
+    words.forEach((w) => {
+      if (!w) return;
+      n += body.split(w).length - 1;
+      n += (strong.split(w).length - 1) * 8;
+    });
+    return n;
+  };
+
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     return scoped
@@ -1159,17 +1182,27 @@ function SermonArchive({ user, profileName, onLogout }) {
         if (fState === "미분석" && (s.summary || "").trim()) return false;
         if (fState === "본문미기록" && s.book) return false;
         if (fService !== "전체" && (s.service || "미지정") !== fService) return false;
-        if (!q) return true;
+        if (exService !== "없음" && (s.service || "미지정") === exService) return false;
+        const { inc, exc } = parseQuery(query);
         const metaHay = [s.title, s.book, s.ref, s.fileName].join(" ").toLowerCase();
-        if (searchScope === "meta") return metaHay.includes(q);
-        const hay = [
+        const fullHay = [
           s.title, s.book, s.ref, s.fileName, s.content, s.summary,
-          (s.tags || []).join(" "), s.season,
+          (s.tags || []).join(" "), s.season, s.service,
         ].join(" ").toLowerCase();
-        return hay.includes(q);
+        const hay = searchScope === "meta" ? metaHay : fullHay;
+        if (exc.some((w) => fullHay.includes(w))) return false;
+        if (!inc.length) return true;
+        return inc.every((w) => hay.includes(w));
       })
-      .sort((a, b) => (b.date || "").localeCompare(a.date || ""));
-  }, [scoped, query, searchScope, fYear, fSeason, fTag, fState, fService]);
+      .sort((a, b) => {
+        if (sortMode === "relevance") {
+          const { inc } = parseQuery(query);
+          const d = relScore(b, inc) - relScore(a, inc);
+          if (d !== 0) return d;
+        }
+        return (b.date || "").localeCompare(a.date || "");
+      });
+  }, [scoped, query, searchScope, fYear, fSeason, fTag, fState, fService, exService, sortMode]);
 
   /* 검색어가 제목·성경·장절·파일명에서 일치하는지 (아니면 내용에서만 일치) */
   const metaMatch = (s) => {
@@ -1607,6 +1640,14 @@ function SermonArchive({ user, profileName, onLogout }) {
                 {SERVICE_TYPES.filter((s) => s !== "미지정").map((s) => <option key={s}>{s}</option>)}
                 <option value="미지정">미지정</option>
               </select>
+              <select value={exService} onChange={(e) => setExService(e.target.value)} title="선택한 예배를 결과에서 제외합니다">
+                <option value="없음">제외: 없음</option>
+                {SERVICE_TYPES.filter((s) => s !== "미지정").map((s) => <option key={"ex" + s} value={s}>{"제외: " + s}</option>)}
+              </select>
+              <select value={sortMode} onChange={(e) => setSortMode(e.target.value)} title="관련도순은 검색어가 많이 나오는 설교를 위로 올립니다">
+                <option value="date">정렬: 최신순</option>
+                <option value="relevance">정렬: 관련도순</option>
+              </select>
               <select value={fTag} onChange={(e) => setFTag(e.target.value)}>
                 {allTags.map((t) => <option key={t}>{t === "전체" ? "태그: 전체" : "#" + t}</option>)}
               </select>
@@ -1713,6 +1754,11 @@ function SermonArchive({ user, profileName, onLogout }) {
                         <span className="season content-hit">내용 일치</span>}
                       {isDup(s) && <span className="season dup">중복</span>}
                       {!(s.summary || "").trim() && <span className="season noai">미분석</span>}
+                        {sortMode === "relevance" && parseQuery(query).inc.length > 0 && relScore(s, parseQuery(query).inc) > 0 && (
+                          <span className="season" title="검색어가 본문·제목·요약에 나타난 정도">
+                            {"관련도 " + relScore(s, parseQuery(query).inc)}
+                          </span>
+                        )}
                       {s.service && s.service !== "미지정" && <span className="season svc">{s.service}</span>}
                       {library === "shared" && s.author && <span className="season author">{s.author}</span>}
                       {s.season && s.season !== "일반" && <span className="season">{s.season}</span>}
