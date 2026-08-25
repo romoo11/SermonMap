@@ -1172,6 +1172,44 @@ function SermonArchive({ user, profileName, onLogout }) {
     return n;
   };
 
+  /* ── 툴바 입체 아이콘 (네이비 통일, 선택 작업만 붉은 계열) ── */
+  const TbIcon = ({ name }) => {
+    const N1 = "#378ADD", N2 = "#185FA5", N3 = "#0C447C", N4 = "#042C53", NL = "#85B7EB";
+    const R1 = "#E24B4A", R2 = "#A32D2D", R3 = "#791F1F", RL = "#F7C1C1";
+    const P = { viewBox: "0 0 60 62", width: 22, height: 22, "aria-hidden": "true", focusable: "false" };
+    if (name === "batch") return (
+      <svg {...P}>
+        <path d="M30 34 L52 45 L30 56 L8 45 Z" fill={N3}/><path d="M8 45 L30 56 L30 59 L8 48 Z" fill={N4}/><path d="M52 45 L30 56 L30 59 L52 48 Z" fill={N4}/>
+        <path d="M30 22 L52 33 L30 44 L8 33 Z" fill={N2}/><path d="M8 33 L30 44 L30 47 L8 36 Z" fill={N3}/><path d="M52 33 L30 44 L30 47 L52 36 Z" fill={N4}/>
+        <path d="M30 10 L52 21 L30 32 L8 21 Z" fill={N1}/><path d="M8 21 L30 32 L30 35 L8 24 Z" fill={N2}/><path d="M52 21 L30 32 L30 35 L52 24 Z" fill={N3}/>
+      </svg>);
+    if (name === "export") return (
+      <svg {...P}>
+        <path d="M30 28 L52 39 L30 50 L8 39 Z" fill={N2}/><path d="M8 39 L30 50 L30 57 L8 46 Z" fill={N3}/><path d="M52 39 L30 50 L30 57 L52 46 Z" fill={N4}/>
+        <path d="M32 5 L44 20 L37 20 L37 32 L27 32 L27 20 L20 20 Z" fill={N4}/>
+        <path d="M30 3 L42 18 L35 18 L35 30 L25 30 L25 18 L18 18 Z" fill={NL}/>
+      </svg>);
+    if (name === "import") return (
+      <svg {...P}>
+        <path d="M30 28 L52 39 L30 50 L8 39 Z" fill={N2}/><path d="M8 39 L30 50 L30 57 L8 46 Z" fill={N3}/><path d="M52 39 L30 50 L30 57 L52 46 Z" fill={N4}/>
+        <path d="M32 32 L20 17 L27 17 L27 5 L37 5 L37 17 L44 17 Z" fill={N4}/>
+        <path d="M30 30 L18 15 L25 15 L25 3 L35 3 L35 15 L42 15 Z" fill={NL}/>
+      </svg>);
+    if (name === "select") return (
+      <svg {...P}>
+        <path d="M30 36 L52 47 L30 58 L8 47 Z" fill={R1}/><path d="M8 47 L30 58 L30 62 L8 51 Z" fill={R2}/><path d="M52 47 L30 58 L30 62 L52 51 Z" fill={R3}/>
+        <path d="M18 22 L27 31 L45 10" fill="none" stroke={R3} strokeWidth="9" strokeLinecap="round" strokeLinejoin="round"/>
+        <path d="M16 20 L25 29 L43 8" fill="none" stroke={RL} strokeWidth="9" strokeLinecap="round" strokeLinejoin="round"/>
+      </svg>);
+    return (
+      <svg {...P}>
+        <path d="M30 36 L52 47 L30 58 L8 47 Z" fill={N2}/><path d="M8 47 L30 58 L30 62 L8 51 Z" fill={N3}/><path d="M52 47 L30 58 L30 62 L52 51 Z" fill={N4}/>
+        <path d="M28 4 L33 16 L45 21 L33 26 L28 38 L23 26 L11 21 L23 16 Z" fill={N4}/>
+        <path d="M26 2 L31 14 L43 19 L31 24 L26 36 L21 24 L9 19 L21 14 Z" fill={NL}/>
+        <path d="M47 28 L49 34 L55 36 L49 38 L47 44 L45 38 L39 36 L45 34 Z" fill={N2}/>
+      </svg>);
+  };
+
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     return scoped
@@ -1663,23 +1701,23 @@ function SermonArchive({ user, profileName, onLogout }) {
             {scoped.length === 0
               ? null
               : `${filtered.length}편 표시 · ${library === "personal" ? "내 서재" : "공동 서재"} ${scoped.length}편`}
-            <button className="batch-link" onClick={() => { setBatchItems([]); setBatchDone(false); setView("batch"); }}>
-              여러 파일 한꺼번에 등록 →
+            <button className="batch-link tb-btn" data-tip="여러 파일 한꺼번에 등록" aria-label="여러 파일 한꺼번에 등록" onClick={() => { setBatchItems([]); setBatchDone(false); setView("batch"); }}>
+              <TbIcon name="batch" /><span className="tb-label">여러 파일 한꺼번에 등록</span>
             </button>
-            <button className="batch-link" onClick={exportData} disabled={!scoped.length}>
-              백업 내보내기
+            <button className="batch-link tb-btn" data-tip="백업 내보내기" aria-label="백업 내보내기" onClick={exportData} disabled={!scoped.length}>
+              <TbIcon name="export" /><span className="tb-label">백업 내보내기</span>
             </button>
-            <label className="batch-link" style={{ cursor: "pointer" }}>
-              가져오기(JSON)
+            <label className="batch-link tb-btn" data-tip="가져오기 (JSON)" aria-label="가져오기 (JSON)" style={{ cursor: "pointer" }}>
+              <TbIcon name="import" /><span className="tb-label">가져오기(JSON)</span>
               <input type="file" accept=".json" hidden onChange={importData} />
             </label>
             {!selMode && (
-              <button className="batch-link" disabled={!scoped.length}
+              <button className="batch-link tb-btn" data-tip="선택 작업 (삭제·예배 지정)" aria-label="선택 작업 (삭제·예배 지정)" disabled={!scoped.length}
                 onClick={() => { setSelMode(true); setSelIds(new Set()); setOpenId(null); }}>
-                선택 작업 (삭제·예배 지정)
+                <TbIcon name="select" /><span className="tb-label">선택 작업</span>
               </button>
             )}
-            <button className="batch-link" onClick={autoAssignServices}>예배 형태 자동 지정</button>
+            <button className="batch-link tb-btn" data-tip="예배 형태 자동 지정" aria-label="예배 형태 자동 지정" onClick={autoAssignServices}><TbIcon name="auto" /><span className="tb-label">예배 형태 자동 지정</span></button>
           </p>
           {importMsg && <p className="ai-note" style={{ marginBottom: 12 }}>{importMsg}</p>}
           {selMode && (
@@ -2545,6 +2583,16 @@ button.link:hover{text-decoration:underline}
 /* 일괄 등록 */
 .batch-link{background:none;border:none;color:var(--accent);font-size:13px;
   font-weight:700;margin-left:12px;padding:0;text-decoration:underline}
+.tb-btn{position:relative;display:inline-flex;align-items:center;gap:6px;vertical-align:middle;line-height:1;padding:5px 8px;border-radius:8px}
+.tb-btn:hover{background:rgba(24,95,165,.08)}
+.tb-btn:focus-visible{outline:2px solid #185FA5;outline-offset:2px}
+.tb-btn .tb-label{display:none}
+.tb-btn::after{content:attr(data-tip);position:absolute;left:50%;bottom:calc(100% + 8px);transform:translateX(-50%);white-space:nowrap;background:#042C53;color:#E6F1FB;font-size:12px;line-height:1.4;padding:5px 10px;border-radius:6px;opacity:0;pointer-events:none;transition:opacity .12s;z-index:60}
+.tb-btn:hover::after,.tb-btn:focus-visible::after{opacity:1}
+@media (max-width:820px), (hover:none){
+  .tb-btn .tb-label{display:inline}
+  .tb-btn::after{display:none}
+}
 .check-line{display:flex;gap:10px;align-items:flex-start;margin-top:16px;
   font-size:13.5px;line-height:1.7;color:#4a5a6e;background:var(--card);
   border:1px solid var(--line);border-radius:10px;padding:12px 14px;cursor:pointer}
