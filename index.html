@@ -1080,6 +1080,7 @@ function SermonArchive({ user, profileName, onLogout }) {
   const [illTag, setIllTag] = useState("전체");
   const [illOpenId, setIllOpenId] = useState(null);
   const [illSort, setIllSort] = useState("recent");
+  const [illView, setIllView] = useState("group"); /* group | list */
 
   const [illErr, setIllErr] = useState("");
   const fetchIllus = async () => {
@@ -1127,6 +1128,13 @@ function SermonArchive({ user, profileName, onLogout }) {
     const s = new Set();
     illus.forEach((x) => (x.tags || []).forEach((t) => s.add(t)));
     return ["전체", ...[...s].sort((a, b) => a.localeCompare(b, "ko"))];
+  }, [illus]);
+
+  /* 주제별 묶음 (많이 쓰인 주제부터) */
+  const illGroups = useMemo(() => {
+    const m = {};
+    illus.forEach((x) => (x.tags || []).forEach((t) => { m[t] = (m[t] || 0) + 1; }));
+    return Object.entries(m).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], "ko"));
   }, [illus]);
 
   const illFiltered = useMemo(() => {
@@ -2427,11 +2435,30 @@ function SermonArchive({ user, profileName, onLogout }) {
                 <option value="title">정렬: 제목순</option>
                 <option value="used">정렬: 많이 쓴 순</option>
               </select>
+              <select value={illView} onChange={(e) => setIllView(e.target.value)}>
+                <option value="group">보기: 주제별로 묶어서</option>
+                <option value="list">보기: 전체 목록</option>
+              </select>
             </div>
           </div>
 
+          {illGroups.length > 0 && (
+            <div className="ill-groups">
+              <button className={"ill-chip" + (illTag === "전체" ? " on" : "")}
+                onClick={() => setIllTag("전체")}>
+                전체 <b>{illus.length}</b>
+              </button>
+              {illGroups.map(([t, n]) => (
+                <button key={t} className={"ill-chip" + (illTag === t ? " on" : "")}
+                  onClick={() => setIllTag(illTag === t ? "전체" : t)}>
+                  {t} <b>{n}</b>
+                </button>
+              ))}
+            </div>
+          )}
+
           <p className="count-line">
-            {illFiltered.length}편 표시 · 전체 {illus.length}편
+            {illTag !== "전체" ? `주제 '${illTag}' · ` : ""}{illFiltered.length}편 표시 · 전체 {illus.length}편
             <button className="batch-link" onClick={fetchIllus}>새로 불러오기</button>
           </p>
 
@@ -2443,7 +2470,36 @@ function SermonArchive({ user, profileName, onLogout }) {
                 : ""}
             </p>
           )}
-          {!illus.length ? (
+          {illus.length > 0 && illView === "group" && illTag === "전체" && !illQuery.trim() ? (
+            <div className="ill-sections">
+              {illGroups.map(([t, n]) => {
+                const items = illus.filter((x) => (x.tags || []).includes(t));
+                return (
+                  <section key={t} className="ill-section">
+                    <h3 className="ill-section-head">
+                      <span className="ill-section-name">{t}</span>
+                      <span className="ill-section-count">{n}편</span>
+                    </h3>
+                    <ul className="ill-brief">
+                      {items.map((x) => (
+                        <li key={x.id}>
+                          <button className="link" onClick={() => { setIllView("list"); setIllTag("전체"); setIllOpenId(x.id); }}>
+                            <span className="ill-brief-title">{x.title}</span>
+                            {x.point && <span className="ill-brief-point">{x.point}</span>}
+                            <span className="ill-brief-used">
+                              {(x.usedIn || []).length
+                                ? x.usedIn.map((u) => `${u.date || ""} ${u.title}`).join(" / ")
+                                : "사용 기록 없음"}
+                            </span>
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  </section>
+                );
+              })}
+            </div>
+          ) : !illus.length ? (
             <p className="muted" style={{ marginTop: 20 }}>
               아직 등록된 예화가 없습니다. 예화가 담긴 가져오기 파일을 '기록 → 가져오기(JSON)'로 넣으면 여기에 쌓입니다.
             </p>
@@ -2896,6 +2952,28 @@ button.link:hover{text-decoration:underline}
 .season.noai{background:#f3ead2;color:#8a6d1f}
 .season.svc{background:#e2eef2;color:#2f5d6b}
 .orig-row{display:flex;gap:12px;align-items:center;margin-bottom:10px;flex-wrap:wrap}
+.ill-sections{margin-top:8px;display:flex;flex-direction:column;gap:22px}
+.ill-section{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 18px}
+.ill-section-head{display:flex;align-items:baseline;gap:10px;margin-bottom:10px;
+  padding-bottom:8px;border-bottom:1px solid var(--line)}
+.ill-section-name{font-size:16px;font-weight:700;color:var(--ink)}
+.ill-section-name::before{content:"#";color:var(--accent);margin-right:2px}
+.ill-section-count{font-size:12.5px;color:var(--muted)}
+.ill-brief{list-style:none;display:flex;flex-direction:column;gap:9px}
+.ill-brief button{display:flex;flex-direction:column;gap:2px;text-align:left;width:100%;
+  background:none;border:none;cursor:pointer;font-family:inherit;padding:2px 0}
+.ill-brief button:hover .ill-brief-title{text-decoration:underline}
+.ill-brief-title{font-size:14.5px;font-weight:700;color:var(--ink)}
+.ill-brief-point{font-size:13px;color:#5f6b7a;line-height:1.5}
+.ill-brief-used{font-size:12px;color:#9aa4b0}
+.ill-groups{display:flex;flex-wrap:wrap;gap:7px;margin:14px 0 4px}
+.ill-chip{background:var(--card);border:1px solid var(--line);border-radius:20px;
+  padding:6px 13px;font-size:13px;color:#4a5a6e;cursor:pointer;font-family:inherit;
+  transition:background .12s,border-color .12s,color .12s}
+.ill-chip b{color:var(--accent);font-weight:700;margin-left:3px}
+.ill-chip:hover{border-color:var(--accent)}
+.ill-chip.on{background:var(--ink);border-color:var(--ink);color:#fff}
+.ill-chip.on b{color:#e8c98a}
 .ill-head{align-items:flex-start}
 .ill-head .card-main{gap:5px}
 .ill-point{font-size:13.5px;color:var(--accent);font-weight:600;line-height:1.5}
