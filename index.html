@@ -1079,6 +1079,7 @@ function SermonArchive({ user, profileName, onLogout }) {
   const [illQuery, setIllQuery] = useState("");
   const [illTag, setIllTag] = useState("전체");
   const [illOpenId, setIllOpenId] = useState(null);
+  const [illSort, setIllSort] = useState("recent");
 
   const [illErr, setIllErr] = useState("");
   const fetchIllus = async () => {
@@ -1137,8 +1138,14 @@ function SermonArchive({ user, profileName, onLogout }) {
         (x.usedIn || []).map((u) => u.title + " " + u.book + " " + u.ref).join(" ")]
         .join(" ").toLowerCase();
       return hay.includes(q);
+    }).sort((a, b) => {
+      if (illSort === "title") return (a.title || "").localeCompare(b.title || "", "ko");
+      if (illSort === "used") return (b.usedIn || []).length - (a.usedIn || []).length;
+      const ad = Math.max(...[0, ...(a.usedIn || []).map((u) => (u.date || "").replace(/\D/g, "") || 0)]);
+      const bd = Math.max(...[0, ...(b.usedIn || []).map((u) => (u.date || "").replace(/\D/g, "") || 0)]);
+      return bd - ad;
     });
-  }, [illus, illQuery, illTag]);
+  }, [illus, illQuery, illTag, illSort]);
 
   /* ── 불러오기 ── */
   const fetchAll = async () => {
@@ -2415,6 +2422,11 @@ function SermonArchive({ user, profileName, onLogout }) {
               <select value={illTag} onChange={(e) => setIllTag(e.target.value)}>
                 {illTags.map((t) => <option key={t}>{t === "전체" ? "주제: 전체" : "#" + t}</option>)}
               </select>
+              <select value={illSort} onChange={(e) => setIllSort(e.target.value)}>
+                <option value="recent">정렬: 최근 사용순</option>
+                <option value="title">정렬: 제목순</option>
+                <option value="used">정렬: 많이 쓴 순</option>
+              </select>
             </div>
           </div>
 
@@ -2441,24 +2453,30 @@ function SermonArchive({ user, profileName, onLogout }) {
                 const open = illOpenId === x.id;
                 return (
                   <li key={x.id} className={"card" + (open ? " open" : "")}>
-                    <button className="card-head" onClick={() => setIllOpenId(open ? null : x.id)}>
+                    <button className="card-head ill-head" onClick={() => setIllOpenId(open ? null : x.id)}>
                       <div className="card-main">
-                        <span className="scripture">{x.point || "예화"}</span>
                         <span className="card-title">{x.title}</span>
+                        {x.point && <span className="ill-point">{x.point}</span>}
+                        {!open && x.body && <span className="ill-peek">{x.body}</span>}
+                        <span className="ill-used">
+                          {(x.usedIn || []).length > 0
+                            ? x.usedIn.map((u) => `${u.date || "날짜 없음"} ${u.book || ""}${u.ref ? " " + u.ref : ""} · ${u.title}`).join("   /   ")
+                            : "사용한 설교 정보 없음"}
+                        </span>
+                        {(x.tags || []).length > 0 && (
+                          <span className="ill-tags">{x.tags.map((t) => "#" + t).join(" ")}</span>
+                        )}
                       </div>
                       <div className="card-meta">
                         {(x.usedIn || []).length > 0 &&
                           <span className="season svc">{x.usedIn.length}회 사용</span>}
                         {x.source && <span className="season">{x.source}</span>}
+                        <span className="ill-more">{open ? "접기" : "전문 보기"}</span>
                       </div>
                     </button>
                     {open && (
                       <div className="card-body">
-                        {(x.tags || []).length > 0 && (
-                          <p className="tags">{x.tags.map((t) => <span key={t} className="tag">#{t}</span>)}</p>
-                        )}
                         <div className="content">{x.body}</div>
-                        {x.point && <div className="summary"><b>전하는 메시지</b>{x.point}</div>}
                         {(x.usedIn || []).length > 0 && (
                           <div className="used-in">
                             <b>사용한 설교</b>
@@ -2878,6 +2896,14 @@ button.link:hover{text-decoration:underline}
 .season.noai{background:#f3ead2;color:#8a6d1f}
 .season.svc{background:#e2eef2;color:#2f5d6b}
 .orig-row{display:flex;gap:12px;align-items:center;margin-bottom:10px;flex-wrap:wrap}
+.ill-head{align-items:flex-start}
+.ill-head .card-main{gap:5px}
+.ill-point{font-size:13.5px;color:var(--accent);font-weight:600;line-height:1.5}
+.ill-peek{font-size:13px;color:#5f6b7a;line-height:1.6;display:-webkit-box;
+  -webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.ill-used{font-size:12.5px;color:#7b8794;line-height:1.5}
+.ill-tags{font-size:12px;color:#9aa4b0}
+.ill-more{font-size:12px;color:var(--accent);text-decoration:underline;white-space:nowrap}
 .used-in{margin-top:12px;padding:10px 14px;background:#f6f4ef;border-radius:10px;font-size:14px}
 .used-in b{display:block;margin-bottom:6px;color:var(--accent)}
 .used-in ul{list-style:none;display:flex;flex-direction:column;gap:6px}
