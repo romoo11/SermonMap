@@ -2764,29 +2764,34 @@ function SermonArchive({ user, profileName, onLogout }) {
                   <span className="testament-name">{sec.testament}</span>
                   <span className="testament-count">{secTotal}편</span>
                 </h3>
-                {sec.groups.map((g) => {
-                  const gTotal = g.books.reduce((a, n) => a + (bookCounts[n] || 0), 0);
-                  return (
-                    <div key={g.name} className="bible-group">
-                      <div className="bible-group-head">
-                        <span className="bible-group-name">{g.name}</span>
-                        <span className="bible-group-count">{gTotal}편</span>
+                <div className="bible-columns">
+                  {sec.groups.map((g) => {
+                    const gTotal = g.books.reduce((a, n) => a + (bookCounts[n] || 0), 0);
+                    return (
+                      <div key={g.name} className="bible-col">
+                        <div className="bible-group-head">
+                          <span className="bible-group-name">{g.name}</span>
+                          <span className="bible-group-count">{gTotal}편</span>
+                        </div>
+                        <div className="book-column">
+                          {g.books.map((name) => (
+                            <button key={name}
+                              className={"book-cell book-row" + (mapBook === name ? " sel" : "")}
+                              style={{ background: heat(bookCounts[name], maxCount) }}
+                              onClick={() => setMapBook(mapBook === name ? null : name)}>
+                              <span className={"book-name" + ((bookCounts[name] || 0) / maxCount > 0.5 ? " inv" : "")}>
+                                {name}
+                              </span>
+                              <span className={"book-num" + ((bookCounts[name] || 0) / maxCount > 0.5 ? " inv" : "")}>
+                                {bookCounts[name] || ""}
+                              </span>
+                            </button>
+                          ))}
+                        </div>
                       </div>
-                      <div className="book-grid">
-                        {g.books.map((name) => (
-                          <button key={name}
-                            className={"book-cell" + (mapBook === name ? " sel" : "")}
-                            style={{ background: heat(bookCounts[name], maxCount) }}
-                            onClick={() => setMapBook(mapBook === name ? null : name)}>
-                            <span className={"book-name" + ((bookCounts[name] || 0) / maxCount > 0.5 ? " inv" : "")}>
-                              {name}{bookCounts[name] ? ` ${bookCounts[name]}` : ""}
-                            </span>
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  );
-                })}
+                    );
+                  })}
+                </div>
               </section>
             );
           })}
@@ -3007,6 +3012,17 @@ button.link:hover{text-decoration:underline}
   padding-bottom:9px;border-bottom:2px solid var(--accent)}
 .testament-name{font-family:'Noto Serif KR',serif;font-size:19px;font-weight:700;color:var(--ink)}
 .testament-count{font-size:13px;color:var(--muted)}
+.bible-columns{display:grid;grid-template-columns:repeat(3,1fr);gap:18px;align-items:start}
+.bible-col{min-width:0}
+.book-column{display:flex;flex-direction:column;gap:7px;margin-bottom:14px}
+.book-cell.book-row{display:flex;align-items:center;justify-content:space-between;
+  gap:8px;padding:11px 13px;text-align:left;border-radius:14px}
+.book-num{position:relative;z-index:2;font-size:12px;font-weight:700;color:var(--accent);
+  flex-shrink:0;text-shadow:0 1px 0 rgba(255,255,255,.5)}
+.book-num.inv{color:#fff;text-shadow:0 1px 2px rgba(0,0,0,.35)}
+@media (max-width:760px){
+  .bible-columns{grid-template-columns:1fr;gap:8px}
+}
 .bible-group{margin-bottom:4px}
 .bible-group-head{display:flex;align-items:baseline;gap:8px;margin-bottom:7px}
 .bible-group-name{font-size:14px;font-weight:700;color:var(--accent)}
