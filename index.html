@@ -2773,7 +2773,7 @@ function SermonArchive({ user, profileName, onLogout }) {
                           <span className="bible-group-name">{g.name}</span>
                           <span className="bible-group-count">{gTotal}편</span>
                         </div>
-                        <div className="book-column">
+                        <div className="book-mini-grid">
                           {g.books.map((name) => (
                             <button key={name}
                               className={"book-cell book-row" + (mapBook === name ? " sel" : "")}
@@ -3014,11 +3014,12 @@ button.link:hover{text-decoration:underline}
 .testament-count{font-size:13px;color:var(--muted)}
 .bible-columns{display:grid;grid-template-columns:repeat(3,1fr);gap:18px;align-items:start}
 .bible-col{min-width:0}
-.book-column{display:flex;flex-direction:column;gap:7px;margin-bottom:14px}
-.book-cell.book-row{display:flex;align-items:center;justify-content:space-between;
-  gap:8px;padding:11px 13px;text-align:left;border-radius:14px}
-.book-num{position:relative;z-index:2;font-size:12px;font-weight:700;color:var(--accent);
-  flex-shrink:0;text-shadow:0 1px 0 rgba(255,255,255,.5)}
+.book-mini-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(84px,1fr));
+  gap:7px;margin-bottom:16px}
+.book-cell.book-row{display:flex;flex-direction:column;align-items:center;justify-content:center;
+  gap:2px;padding:10px 5px;text-align:center;border-radius:14px;min-height:52px}
+.book-num{position:relative;z-index:2;font-size:11.5px;font-weight:700;color:var(--accent);
+  line-height:1;text-shadow:0 1px 0 rgba(255,255,255,.5)}
 .book-num.inv{color:#fff;text-shadow:0 1px 2px rgba(0,0,0,.35)}
 @media (max-width:760px){
   .bible-columns{grid-template-columns:1fr;gap:8px}
@@ -3061,8 +3062,8 @@ button.link:hover{text-decoration:underline}
     0 1px 1px rgba(255,255,255,.7) inset,
     0 -6px 10px rgba(0,0,0,.12) inset,
     0 10px 18px rgba(168,128,47,.28)}
-.book-name{position:relative;z-index:2;font-size:12.5px;color:var(--ink);font-weight:600;
-  text-shadow:0 1px 0 rgba(255,255,255,.5)}
+.book-name{position:relative;z-index:2;font-size:12px;color:var(--ink);font-weight:600;
+  line-height:1.25;word-break:keep-all;text-shadow:0 1px 0 rgba(255,255,255,.5)}
 .book-name.inv{color:#fff;text-shadow:0 1px 2px rgba(0,0,0,.35)}
 
 /* 비중 띠도 같은 질감으로 */
