@@ -2290,36 +2290,34 @@ function SermonArchive({ user, profileName, onLogout }) {
               </div>
 
               {/* 대주제 격자 (가나다순) */}
-              <div className="book-grid">
+              <div className="book-mini-grid">
                 {topicTree.map((cat, i) => (
                   <button key={cat.name}
-                    className={"book-cell" + (topicSel && topicSel.kind === "cat" && topicSel.name === cat.name ? " sel" : "")}
+                    className={"book-cell book-row" + (topicSel && topicSel.kind === "cat" && topicSel.name === cat.name ? " sel" : "")}
                     style={{ background: heat(cat.count, maxCat) }}
                     onClick={() => setTopicSel(
                       topicSel && topicSel.kind === "cat" && topicSel.name === cat.name
                         ? null : { kind: "cat", name: cat.name }
                     )}>
-                    <span className={"book-name" + (cat.count / maxCat > 0.5 ? " inv" : "")}>
-                      {cat.name} {cat.count}
-                    </span>
+                    <span className={"book-name" + (cat.count / maxCat > 0.5 ? " inv" : "")}>{cat.name}</span>
+                    <span className={"book-num" + (cat.count / maxCat > 0.5 ? " inv" : "")}>{cat.count || ""}</span>
                   </button>
                 ))}
               </div>
 
               {/* 세부 주제 격자 (가나다순, 초성별 색 교차) */}
               <div className="spine-labels" style={{ marginBottom: 4 }}><span>세부 주제 (가나다순)</span></div>
-              <div className="book-grid">
+              <div className="book-mini-grid">
                 {tagsKo.map(([t, c], i) => (
                   <button key={t}
-                    className={"book-cell" + (topicSel && topicSel.kind === "tag" && topicSel.name === t ? " sel" : "")}
+                    className={"book-cell book-row" + (topicSel && topicSel.kind === "tag" && topicSel.name === t ? " sel" : "")}
                     style={{ background: heat(c, maxTag) }}
                     onClick={() => setTopicSel(
                       topicSel && topicSel.kind === "tag" && topicSel.name === t
                         ? null : { kind: "tag", name: t }
                     )}>
-                    <span className={"book-name" + (c / maxTag > 0.5 ? " inv" : "")}>
-                      {t} {c}
-                    </span>
+                    <span className={"book-name" + (c / maxTag > 0.5 ? " inv" : "")}>{t}</span>
+                    <span className={"book-num" + (c / maxTag > 0.5 ? " inv" : "")}>{c || ""}</span>
                   </button>
                 ))}
               </div>
@@ -2396,15 +2394,14 @@ function SermonArchive({ user, profileName, onLogout }) {
           </div>
 
           {/* 절기 격자 */}
-          <div className="book-grid">
+          <div className="book-mini-grid">
             {SEASON_ORDER.map((s) => (
               <button key={s}
-                className={"book-cell" + (seasonSel === s ? " sel" : "")}
+                className={"book-cell book-row" + (seasonSel === s ? " sel" : "")}
                 style={{ background: heat(seasonCounts[s], maxSeason) }}
                 onClick={() => setSeasonSel(seasonSel === s ? null : s)}>
-                <span className={"book-name" + ((seasonCounts[s] || 0) / maxSeason > 0.5 ? " inv" : "")}>
-                  {s}{seasonCounts[s] ? ` ${seasonCounts[s]}` : ""}
-                </span>
+                <span className={"book-name" + ((seasonCounts[s] || 0) / maxSeason > 0.5 ? " inv" : "")}>{s}</span>
+                <span className={"book-num" + ((seasonCounts[s] || 0) / maxSeason > 0.5 ? " inv" : "")}>{seasonCounts[s] || ""}</span>
               </button>
             ))}
           </div>
@@ -2502,18 +2499,20 @@ function SermonArchive({ user, profileName, onLogout }) {
                 </div>
 
                 <div className="spine-labels" style={{ marginBottom: 4 }}><span>주제 (가나다순)</span></div>
-                <div className="book-grid">
-                  <button className={"book-cell" + (illTag === "전체" ? " sel" : "")}
+                <div className="book-mini-grid">
+                  <button className={"book-cell book-row" + (illTag === "전체" ? " sel" : "")}
                     style={{ background: "var(--cell-empty)" }}
                     onClick={() => setIllTag("전체")}>
-                    <span className="book-name">전체 {illus.length}</span>
+                    <span className="book-name">전체</span>
+                    <span className="book-num">{illus.length}</span>
                   </button>
                   {ko.map(([t, n]) => (
                     <button key={t}
-                      className={"book-cell" + (illTag === t ? " sel" : "")}
+                      className={"book-cell book-row" + (illTag === t ? " sel" : "")}
                       style={{ background: heat(n, maxIll) }}
                       onClick={() => setIllTag(illTag === t ? "전체" : t)}>
-                      <span className={"book-name" + (n / maxIll > 0.5 ? " inv" : "")}>{t} {n}</span>
+                      <span className={"book-name" + (n / maxIll > 0.5 ? " inv" : "")}>{t}</span>
+                      <span className={"book-num" + (n / maxIll > 0.5 ? " inv" : "")}>{n}</span>
                     </button>
                   ))}
                 </div>
@@ -2677,15 +2676,14 @@ function SermonArchive({ user, profileName, onLogout }) {
             </div>
           </div>
 
-          <div className="book-grid">
+          <div className="book-mini-grid">
             {SERVICE_ORDER.map((s) => (
               <button key={s}
-                className={"book-cell" + (serviceSel === s ? " sel" : "")}
+                className={"book-cell book-row" + (serviceSel === s ? " sel" : "")}
                 style={{ background: heat(serviceCounts[s], maxService) }}
                 onClick={() => setServiceSel(serviceSel === s ? null : s)}>
-                <span className={"book-name" + ((serviceCounts[s] || 0) / maxService > 0.5 ? " inv" : "")}>
-                  {s}{serviceCounts[s] ? ` ${serviceCounts[s]}` : ""}
-                </span>
+                <span className={"book-name" + ((serviceCounts[s] || 0) / maxService > 0.5 ? " inv" : "")}>{s}</span>
+                <span className={"book-num" + ((serviceCounts[s] || 0) / maxService > 0.5 ? " inv" : "")}>{serviceCounts[s] || ""}</span>
               </button>
             ))}
           </div>
