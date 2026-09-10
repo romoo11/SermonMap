@@ -34,6 +34,24 @@ const mammoth = window.mammoth;
 const API_KEY_STORAGE = "sermon-archive-apikey";
 
 /* ── 성경 66권 (장 수 포함) ─────────────────────────────── */
+/* 구약·신약을 갈래별로 나눈 구조 (성경 지도 배치용) */
+const BIBLE_SECTIONS = [
+  { testament: "구약", groups: [
+    { name: "역사서", books: ["창세기","출애굽기","레위기","민수기","신명기","여호수아","사사기","룻기",
+        "사무엘상","사무엘하","열왕기상","열왕기하","역대상","역대하","에스라","느헤미야","에스더"] },
+    { name: "지혜서", books: ["욥기","시편","잠언","전도서","아가"] },
+    { name: "예언서", books: ["이사야","예레미야","예레미야애가","에스겔","다니엘","호세아","요엘","아모스",
+        "오바댜","요나","미가","나훔","하박국","스바냐","학개","스가랴","말라기"] },
+  ]},
+  { testament: "신약", groups: [
+    { name: "역사서 (복음서·사도행전)", books: ["마태복음","마가복음","누가복음","요한복음","사도행전"] },
+    { name: "지혜서 (서신서)", books: ["로마서","고린도전서","고린도후서","갈라디아서","에베소서","빌립보서",
+        "골로새서","데살로니가전서","데살로니가후서","디모데전서","디모데후서","디도서","빌레몬서",
+        "히브리서","야고보서","베드로전서","베드로후서","요한일서","요한이서","요한삼서","유다서"] },
+    { name: "예언서", books: ["요한계시록"] },
+  ]},
+];
+
 const BOOKS = [
   ["창세기",50],["출애굽기",40],["레위기",27],["민수기",36],["신명기",34],
   ["여호수아",24],["사사기",21],["룻기",4],["사무엘상",31],["사무엘하",24],
@@ -2736,19 +2754,42 @@ function SermonArchive({ user, profileName, onLogout }) {
             </div>
           </div>
 
-          {/* 책별 그리드 */}
-          <div className="book-grid">
-            {BOOKS.map(([name], i) => (
-              <button key={name}
-                className={"book-cell" + (mapBook === name ? " sel" : "")}
-                style={{ background: heat(bookCounts[name], maxCount) }}
-                onClick={() => setMapBook(mapBook === name ? null : name)}>
-                <span className={"book-name" + (bookCounts[name] / maxCount > 0.5 ? " inv" : "")}>
-                  {name}{bookCounts[name] ? ` ${bookCounts[name]}` : ""}
-                </span>
-              </button>
-            ))}
-          </div>
+          {/* 구약·신약 구역, 갈래별 배치 */}
+          {BIBLE_SECTIONS.map((sec) => {
+            const secTotal = sec.groups.reduce(
+              (a, g) => a + g.books.reduce((b, n) => b + (bookCounts[n] || 0), 0), 0);
+            return (
+              <section key={sec.testament} className="testament">
+                <h3 className="testament-head">
+                  <span className="testament-name">{sec.testament}</span>
+                  <span className="testament-count">{secTotal}편</span>
+                </h3>
+                {sec.groups.map((g) => {
+                  const gTotal = g.books.reduce((a, n) => a + (bookCounts[n] || 0), 0);
+                  return (
+                    <div key={g.name} className="bible-group">
+                      <div className="bible-group-head">
+                        <span className="bible-group-name">{g.name}</span>
+                        <span className="bible-group-count">{gTotal}편</span>
+                      </div>
+                      <div className="book-grid">
+                        {g.books.map((name) => (
+                          <button key={name}
+                            className={"book-cell" + (mapBook === name ? " sel" : "")}
+                            style={{ background: heat(bookCounts[name], maxCount) }}
+                            onClick={() => setMapBook(mapBook === name ? null : name)}>
+                            <span className={"book-name" + ((bookCounts[name] || 0) / maxCount > 0.5 ? " inv" : "")}>
+                              {name}{bookCounts[name] ? ` ${bookCounts[name]}` : ""}
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
+              </section>
+            );
+          })}
 
           {mapBook && (
             <div className="book-detail">
@@ -2958,6 +2999,18 @@ button.link:hover{text-decoration:underline}
 
 .book-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));
   gap:9px;margin-bottom:22px}
+
+/* 구약·신약 구역 */
+.testament{margin-bottom:26px;padding:16px 18px 6px;background:var(--card);
+  border:1px solid var(--line);border-radius:16px}
+.testament-head{display:flex;align-items:baseline;gap:10px;margin-bottom:14px;
+  padding-bottom:9px;border-bottom:2px solid var(--accent)}
+.testament-name{font-family:'Noto Serif KR',serif;font-size:19px;font-weight:700;color:var(--ink)}
+.testament-count{font-size:13px;color:var(--muted)}
+.bible-group{margin-bottom:4px}
+.bible-group-head{display:flex;align-items:baseline;gap:8px;margin-bottom:7px}
+.bible-group-name{font-size:14px;font-weight:700;color:var(--accent)}
+.bible-group-count{font-size:12px;color:var(--muted)}
 
 /* 물방울 유리 단추 */
 .book-cell{position:relative;border:none;border-radius:18px;padding:14px 8px;
