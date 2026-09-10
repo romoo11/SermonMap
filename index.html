@@ -2442,20 +2442,66 @@ function SermonArchive({ user, profileName, onLogout }) {
             </div>
           </div>
 
-          {illGroups.length > 0 && (
-            <div className="ill-groups">
-              <button className={"ill-chip" + (illTag === "전체" ? " on" : "")}
-                onClick={() => setIllTag("전체")}>
-                전체 <b>{illus.length}</b>
-              </button>
-              {illGroups.map(([t, n]) => (
-                <button key={t} className={"ill-chip" + (illTag === t ? " on" : "")}
-                  onClick={() => setIllTag(illTag === t ? "전체" : t)}>
-                  {t} <b>{n}</b>
-                </button>
-              ))}
-            </div>
-          )}
+          {illGroups.length > 0 && (() => {
+            const maxIll = Math.max(1, ...illGroups.map(([, n]) => n));
+            const top = illGroups.slice(0, 12);
+            const ko = [...illGroups].sort((a, b) => a[0].localeCompare(b[0], "ko"));
+            return (
+              <>
+                <div className="stat-row" style={{ marginTop: 14 }}>
+                  <div className="stat"><b>{illus.length}</b><span>전체 예화</span></div>
+                  <div className="stat"><b>{illGroups.length}</b><span>주제 수</span></div>
+                  <div className="stat">
+                    <b>{illGroups[0] ? illGroups[0][0] : "—"}</b>
+                    <span>가장 많은 주제{illGroups[0] ? ` (${illGroups[0][1]}편)` : ""}</span>
+                  </div>
+                  <div className="stat">
+                    <b>{illus.filter((x) => (x.usedIn || []).length > 1).length}</b>
+                    <span>두 번 이상 사용</span>
+                  </div>
+                </div>
+
+                <div className="spine-wrap">
+                  <div className="spine-labels"><span>많이 쓰인 주제</span><span>적게 쓰인 주제</span></div>
+                  <div className="spine" role="img" aria-label="주제별 예화 분포">
+                    {top.map(([t, n]) => (
+                      <button key={t}
+                        className={"spine-seg" + (illTag === t ? " sel" : "")}
+                        style={{ flexGrow: n, background: heat(n, maxIll) }}
+                        title={`${t} · ${n}편`}
+                        onClick={() => setIllTag(illTag === t ? "전체" : t)} />
+                    ))}
+                  </div>
+                  <div className="spine-legend">
+                    <span>적음</span>
+                    <span className="legend-cells">
+                      {[0, 0.25, 0.5, 0.75, 1].map((v) => (
+                        <i key={v} style={{ background: v === 0 ? "var(--cell-empty)" : heat(v * maxIll, maxIll) }} />
+                      ))}
+                    </span>
+                    <span>많음</span>
+                  </div>
+                </div>
+
+                <div className="spine-labels" style={{ marginBottom: 4 }}><span>주제 (가나다순)</span></div>
+                <div className="book-grid">
+                  <button className={"book-cell" + (illTag === "전체" ? " sel" : "")}
+                    style={{ background: "var(--cell-empty)" }}
+                    onClick={() => setIllTag("전체")}>
+                    <span className="book-name">전체 {illus.length}</span>
+                  </button>
+                  {ko.map(([t, n]) => (
+                    <button key={t}
+                      className={"book-cell" + (illTag === t ? " sel" : "")}
+                      style={{ background: heat(n, maxIll) }}
+                      onClick={() => setIllTag(illTag === t ? "전체" : t)}>
+                      <span className={"book-name" + (n / maxIll > 0.5 ? " inv" : "")}>{t} {n}</span>
+                    </button>
+                  ))}
+                </div>
+              </>
+            );
+          })()}
 
           <p className="count-line">
             {illTag !== "전체" ? `주제 '${illTag}' · ` : ""}{illFiltered.length}편 표시 · 전체 {illus.length}편
@@ -2911,11 +2957,56 @@ button.link:hover{text-decoration:underline}
 .legend-cells i{width:16px;height:10px;border-radius:2px;display:block}
 
 .book-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));
-  gap:5px;margin-bottom:20px}
-.book-cell{border:none;border-radius:7px;padding:9px 6px;text-align:center}
-.book-cell.sel{box-shadow:0 0 0 2px var(--accent)}
-.book-name{font-size:12px;color:var(--ink);font-weight:500}
-.book-name.inv{color:#fff}
+  gap:9px;margin-bottom:22px}
+
+/* 물방울 유리 단추 */
+.book-cell{position:relative;border:none;border-radius:18px;padding:14px 8px;
+  text-align:center;cursor:pointer;isolation:isolate;overflow:hidden;
+  box-shadow:
+    0 1px 1px rgba(255,255,255,.65) inset,
+    0 -6px 10px rgba(0,0,0,.10) inset,
+    0 6px 12px rgba(28,32,40,.16),
+    0 1px 2px rgba(28,32,40,.10);
+  transition:transform .18s cubic-bezier(.2,.9,.3,1.2), box-shadow .18s ease, filter .18s ease}
+/* 위쪽 하이라이트(빛 반사) */
+.book-cell::before{content:"";position:absolute;left:6%;right:6%;top:4%;height:44%;
+  border-radius:50%/60% 60% 40% 40%;pointer-events:none;z-index:1;
+  background:linear-gradient(to bottom, rgba(255,255,255,.72), rgba(255,255,255,.16) 60%, rgba(255,255,255,0));
+  filter:blur(.3px)}
+/* 아래쪽 굴절광 */
+.book-cell::after{content:"";position:absolute;left:14%;right:14%;bottom:5%;height:22%;
+  border-radius:50%;pointer-events:none;z-index:1;
+  background:radial-gradient(ellipse at center, rgba(255,255,255,.34), rgba(255,255,255,0) 70%)}
+.book-cell:hover{transform:translateY(-2px) scale(1.02);
+  box-shadow:
+    0 1px 1px rgba(255,255,255,.75) inset,
+    0 -7px 12px rgba(0,0,0,.12) inset,
+    0 12px 20px rgba(28,32,40,.22),
+    0 2px 4px rgba(28,32,40,.12)}
+.book-cell:active{transform:translateY(1px) scale(.98);
+  box-shadow:
+    0 2px 6px rgba(0,0,0,.22) inset,
+    0 1px 2px rgba(28,32,40,.14)}
+.book-cell.sel{box-shadow:
+    0 0 0 2.5px var(--accent),
+    0 1px 1px rgba(255,255,255,.7) inset,
+    0 -6px 10px rgba(0,0,0,.12) inset,
+    0 10px 18px rgba(168,128,47,.28)}
+.book-name{position:relative;z-index:2;font-size:12.5px;color:var(--ink);font-weight:600;
+  text-shadow:0 1px 0 rgba(255,255,255,.5)}
+.book-name.inv{color:#fff;text-shadow:0 1px 2px rgba(0,0,0,.35)}
+
+/* 비중 띠도 같은 질감으로 */
+.spine{border-radius:14px;overflow:hidden;
+  box-shadow:0 1px 1px rgba(255,255,255,.6) inset, 0 -5px 9px rgba(0,0,0,.10) inset,
+    0 5px 12px rgba(28,32,40,.14)}
+.spine-seg{position:relative;transition:filter .15s ease}
+.spine-seg::before{content:"";position:absolute;inset:0 0 55% 0;pointer-events:none;
+  background:linear-gradient(to bottom, rgba(255,255,255,.45), rgba(255,255,255,0))}
+.spine-seg:hover{filter:brightness(1.08)}
+@media (prefers-reduced-motion:reduce){
+  .book-cell{transition:none}
+}
 
 .book-detail{background:var(--card);border:1px solid var(--line);
   border-radius:12px;padding:16px 18px}
