@@ -2991,11 +2991,24 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 .brand-mark{font-size:26px;color:var(--accent);line-height:1}
 .brand h1{font-family:'Noto Serif KR',serif;font-size:21px;font-weight:700;letter-spacing:.02em}
 .brand-sub{font-size:12px;color:#aab6c4;margin-top:2px}
-.tabs{display:flex;gap:8px;align-items:center}
-.tabs button{background:transparent;border:1px solid #3a4d66;color:#cfd8e2;
-  padding:7px 14px;border-radius:20px;font-size:14px}
-.tabs button.on{background:#f2f4f1;color:var(--ink-deep);border-color:#f2f4f1;font-weight:700}
-.tabs .new-btn{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:700}
+.tabs{display:flex;gap:9px;align-items:center;flex-wrap:wrap}
+.tabs button{position:relative;isolation:isolate;overflow:hidden;
+  background:linear-gradient(#3a5578,#2a3f5c);border:none;color:#e6ecf4;
+  padding:9px 18px;border-radius:22px;font-size:14px;cursor:pointer;
+  box-shadow:0 -4px 8px rgba(0,0,0,.22) inset, 0 4px 9px rgba(0,0,0,.30), 0 1px 2px rgba(0,0,0,.22);
+  transition:transform .16s cubic-bezier(.2,.9,.3,1.2), box-shadow .16s, filter .16s}
+.tabs button::before{content:"";position:absolute;inset:0;height:52%;border-radius:inherit;
+  border-bottom-left-radius:60% 100%;border-bottom-right-radius:60% 100%;pointer-events:none;z-index:1;
+  background:linear-gradient(to bottom, rgba(255,255,255,.32), rgba(255,255,255,.06) 75%, rgba(255,255,255,0))}
+.tabs button:hover{transform:translateY(-1.5px);filter:brightness(1.08);
+  box-shadow:0 -5px 10px rgba(0,0,0,.24) inset, 0 8px 14px rgba(0,0,0,.34), 0 2px 3px rgba(0,0,0,.24)}
+.tabs button:active{transform:translateY(1px);
+  box-shadow:0 2px 6px rgba(0,0,0,.3) inset, 0 1px 2px rgba(0,0,0,.2)}
+.tabs button.on{background:linear-gradient(#ffffff,#e3e8ef);color:var(--ink-deep);font-weight:700;
+  box-shadow:0 -4px 8px rgba(0,0,0,.10) inset, 0 5px 11px rgba(0,0,0,.28), 0 1px 2px rgba(0,0,0,.18)}
+.tabs .new-btn{background:linear-gradient(#c9a44e,#8f6d24);color:#fff;font-weight:700;
+  box-shadow:0 -4px 9px rgba(0,0,0,.24) inset, 0 5px 12px rgba(120,88,20,.45), 0 1px 2px rgba(0,0,0,.2)}
+.tabs .home-btn{background:linear-gradient(#46608a,#2d4265)}
 
 .banner{max-width:960px;margin:12px auto 0;padding:10px 16px;font-size:14px;
   background:var(--accent-soft);border:1px solid var(--accent);border-radius:8px;width:calc(100% - 36px)}
@@ -3288,9 +3301,19 @@ button.link:hover{text-decoration:underline}
 /* 서재 전환 */
 .lib-bar{background:#fff;border-bottom:1px solid var(--line)}
 .lib-inner{max-width:960px;margin:0 auto;padding:10px 18px;display:flex;gap:8px}
-.lib-inner button{flex:0 0 auto;border:1px solid var(--line);background:#eef1f5;
-  color:var(--muted);border-radius:20px;padding:7px 20px;font-size:14px}
-.lib-inner button.on{background:var(--ink-deep);color:#fff;border-color:var(--ink-deep);font-weight:700}
+.lib-inner button{position:relative;isolation:isolate;overflow:hidden;flex:0 0 auto;border:none;
+  background:linear-gradient(#f4f6f9,#dfe5ec);color:#5b6675;border-radius:22px;
+  padding:9px 24px;font-size:14px;cursor:pointer;
+  box-shadow:0 -4px 8px rgba(0,0,0,.09) inset, 0 4px 9px rgba(28,32,40,.16), 0 1px 2px rgba(28,32,40,.10);
+  transition:transform .16s cubic-bezier(.2,.9,.3,1.2), box-shadow .16s, filter .16s}
+.lib-inner button::before{content:"";position:absolute;inset:0;height:52%;border-radius:inherit;
+  border-bottom-left-radius:60% 100%;border-bottom-right-radius:60% 100%;pointer-events:none;z-index:1;
+  background:linear-gradient(to bottom, rgba(255,255,255,.8), rgba(255,255,255,.15) 75%, rgba(255,255,255,0))}
+.lib-inner button:hover{transform:translateY(-1.5px);filter:brightness(1.03)}
+.lib-inner button:active{transform:translateY(1px);
+  box-shadow:0 2px 6px rgba(0,0,0,.18) inset}
+.lib-inner button.on{background:linear-gradient(#2f4a6e,#152a45);color:#fff;font-weight:700;
+  box-shadow:0 -4px 9px rgba(0,0,0,.25) inset, 0 5px 12px rgba(21,42,69,.4), 0 1px 2px rgba(0,0,0,.2)}
 .season.author{background:#e4ebf3;color:#3c556f}
 
 /* 첫 화면 (커브드 책장) */
