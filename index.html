@@ -768,6 +768,22 @@ function Landing({ onEnter }) {
   const [isAdmin, setIsAdmin] = useState(false);
   const [openStats, setOpenStats] = useState(true);
 
+  const [delTarget, setDelTarget] = useState(null);
+  const [delMsg, setDelMsg] = useState("");
+
+  const removeUser = async (row) => {
+    setDelMsg("삭제 중…");
+    try {
+      const res = await sb.rpc("admin_delete_user", { target_email: row.email });
+      if (res.error) { setDelMsg("삭제 실패 — " + (res.error.message || "")); return; }
+      setDelMsg((row.name || row.email) + " 계정과 자료를 삭제했습니다.");
+      setDelTarget(null);
+      await loadStats();
+    } catch (e) {
+      setDelMsg("삭제 실패 — " + ((e && e.message) || "네트워크 오류"));
+    }
+  };
+
   const loadStats = async () => {
     setStats(null); setStatErr("");
     try {
@@ -852,9 +868,24 @@ function Landing({ onEnter }) {
                         <div><b>{r.joined || "-"}</b><span>가입</span></div>
                         <div><b>{r.size}</b><span>자료 크기</span></div>
                       </div>
+                      <div className="au-acts">
+                        {r.email === ADMIN_EMAIL ? (
+                          <span className="au-self">관리자</span>
+                        ) : delTarget === r.email ? (
+                          <>
+                            <button className="danger" onClick={() => removeUser(r)}>정말 지우기</button>
+                            <button className="ghost" onClick={() => setDelTarget(null)}>취소</button>
+                          </>
+                        ) : (
+                          <button className="ghost danger-out" onClick={() => { setDelMsg(""); setDelTarget(r.email); }}>
+                            지우기
+                          </button>
+                        )}
+                      </div>
                     </li>
                   ))}
                 </ul>
+                {delMsg && <p className="admin-msg">{delMsg}</p>}
                 <p className="admin-legend">
                   <b>쓰는 중</b>은 최근 2주 안에 접속한 사용자입니다. <b>멈춘 듯</b>은 6주 안,
                   그보다 오래되면 <b>안 쓰는 듯</b>으로 봅니다. 설교를 한 편도 등록하지 않았으면 <b>시작 안 함</b>입니다.
@@ -3307,6 +3338,12 @@ button.link:hover{text-decoration:underline}
 .au-stats div{text-align:center;min-width:52px}
 .au-stats b{display:block;font-size:17px;font-weight:800;color:var(--ink)}
 .au-stats span{font-size:11.5px;color:var(--muted)}
+.au-acts{display:flex;gap:7px;align-items:center;flex-shrink:0}
+.au-acts button{padding:7px 13px;font-size:13px;border-radius:9px}
+.danger-out{color:var(--danger)!important;border-color:rgba(179,64,47,.45)!important}
+.au-self{font-size:12px;color:var(--muted);padding:6px 10px}
+.admin-msg{margin-top:12px;padding:10px 14px;background:#fdf3e8;border:1px solid #e8d4b8;
+  border-radius:10px;font-size:13px;color:#8a5a1f}
 .admin-legend{margin-top:14px;font-size:12.5px;color:var(--muted);line-height:1.7}
 .admin-legend b{color:var(--ink)}
 .admin-open{position:absolute;top:18px;right:18px;z-index:4;
