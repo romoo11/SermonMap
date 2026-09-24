@@ -175,6 +175,70 @@ const TAG_MERGE = [
 /* 편수가 적어도 지도에 항상 표시할 주제 */
 const PINNED_TOPICS = new Set(["승리"]);
 
+/* 설교 내용에서 주제어를 찾아내기 위한 단어 사전 */
+const TOPIC_HINTS = [
+  ["기도", ["기도","간구","부르짖","무릎","중보","새벽예배","금식"]],
+  ["은혜", ["은혜","은총","값없이","거저 주"]],
+  ["순종", ["순종","복종","말씀대로","분부대로","따라갔"]],
+  ["믿음", ["믿음","믿는","신앙","확신"]],
+  ["사랑", ["사랑","자비","긍휼","품어"]],
+  ["회복", ["회복","치유","고치","일으키","다시 세우","낫게"]],
+  ["겸손", ["겸손","낮아지","자신을 낮","교만하지"]],
+  ["말씀", ["말씀","성경","묵상","진리","가르치"]],
+  ["성령", ["성령","보혜사","성령충만","성령이 임"]],
+  ["회개", ["회개","돌이키","자백","뉘우","통회"]],
+  ["구원", ["구원","영생","구속","속죄","대속","거듭나"]],
+  ["예배", ["예배","찬양","경배","제사","성전","안식일","주일"]],
+  ["헌신", ["헌신","드리","봉사","섬김","충성","희생","바치"]],
+  ["사명", ["사명","소명","부르심","보내","일꾼","비전","맡기"]],
+  ["감사", ["감사","자족","만족","기뻐하"]],
+  ["동행", ["동행","함께하","임재","인도하","붙드"]],
+  ["십자가", ["십자가","보혈","골고다","고난주간","달리"]],
+  ["소망", ["소망","희망","천국","본향","부활","영원한"]],
+  ["응답", ["응답","들으시","이루어 주","허락하"]],
+  ["고난", ["고난","시련","환난","역경","연단","광야","아픔","고통","핍박"]],
+  ["심판", ["심판","진노","경고","징계","책망","벌하"]],
+  ["분별", ["분별","지혜","깨닫","판단","슬기"]],
+  ["섭리", ["섭리","계획","뜻대로","주권","예비하","때가","기다리"]],
+  ["가정", ["가정","자녀","부모","부부","결혼","가족","아버지","어머니","자손"]],
+  ["죄", ["죄","범죄","타락","유혹","시험","욕심","탐심","교만","시기","분노","미움"]],
+  ["기쁨", ["기쁨","즐거","행복","평안","위로","쉼"]],
+  ["선택", ["선택","결단","결심","각오","길을 택"]],
+  ["전도", ["전도","선교","증인","복음을 전","영혼","증거하"]],
+  ["공동체", ["공동체","교회","연합","하나 되","교제","성도","형제","용서","화평"]],
+  ["성장", ["성장","성숙","변화","성화","새사람","자라"]],
+  ["능력", ["능력","권능","기적","역사하"]],
+  ["승리", ["승리","이기","전쟁","싸움","물리치","정복"]],
+  ["거룩", ["거룩","성결","구별","정결","성별"]],
+  ["언약", ["언약","약속","신실","맹세"]],
+  ["복", ["복을","축복","형통","은사","상급","기업"]],
+  ["담대함", ["담대","용기","두려워하지","당당"]],
+  ["마음", ["마음","중심","생각","태도","진심"]],
+  ["일상", ["일상","삶의 자리","생활","현장","작은 일","꾸준"]],
+  ["의지", ["의지","신뢰","바라보","기대"]],
+  ["열매", ["열매","결실","맺"]],
+];
+
+/* 제목·요약·내용을 읽어 주제어 3~4개를 골라냅니다 */
+function guessTopics(rec) {
+  const head = ((rec.title || "") + " " + (rec.summary || "")).toLowerCase();
+  const body = (rec.content || "").slice(0, 4000).toLowerCase();
+  const scores = [];
+  TOPIC_HINTS.forEach(([topic, words]) => {
+    let n = 0;
+    words.forEach((w) => {
+      const k = w.toLowerCase();
+      if (head.includes(k)) n += 6;
+      let idx = body.indexOf(k), hit = 0;
+      while (idx !== -1 && hit < 12) { hit++; idx = body.indexOf(k, idx + k.length); }
+      n += hit;
+    });
+    if (n > 0) scores.push([topic, n]);
+  });
+  scores.sort((a, b) => b[1] - a[1]);
+  return scores.slice(0, 4).filter((x) => x[1] >= 3).map((x) => x[0]);
+}
+
 const TAG_MAP = (() => {
   const m = {};
   TAG_MERGE.forEach(([main, list]) => list.forEach((w) => { m[w] = main; }));
@@ -1900,6 +1964,40 @@ function SermonArchive({ user, profileName, onHome, onLogout }) {
     e.target.value = "";
   };
 
+  /* 태그가 비어 있는 기록에 주제어 자동 채우기 */
+  const autoFillTopics = async () => {
+    try {
+      const cands = sermons
+        .filter((s) => s.mine !== false && !(s.tags || []).length)
+        .map((s) => ({ id: s.id, tags: guessTopics(s) }))
+        .filter((x) => x.tags.length);
+      if (!cands.length) {
+        setImportMsg("주제어를 채울 설교가 없습니다 (태그가 빈 기록이 없거나 내용이 부족합니다).");
+        return;
+      }
+      let done = 0, failMsg = "";
+      const okMap = {};
+      for (let i = 0; i < cands.length; i++) {
+        const c = cands[i];
+        if (i % 5 === 0 || i === cands.length - 1) {
+          setImportMsg("주제어 채우는 중… " + (i + 1) + " / " + cands.length + "편 — 완료될 때까지 기다려 주세요");
+        }
+        try {
+          const { error } = await sb.from("sermons").update({ tags: c.tags }).eq("id", c.id);
+          if (error) { if (!failMsg) failMsg = error.message || ""; }
+          else { done++; okMap[c.id] = c.tags; }
+        } catch (e) { if (!failMsg) failMsg = (e && e.message) || "네트워크 오류"; }
+      }
+      setSermons((prev) => prev.map((p) => (okMap[p.id] ? { ...p, tags: okMap[p.id] } : p)));
+      setImportMsg(
+        (done === cands.length ? "완료 — " : "일부만 완료 — ") + done + "편에 주제어를 채웠습니다." +
+        (failMsg ? " (실패 원인: " + failMsg + ")" : " 주제 지도에서 확인해 보세요.")
+      );
+    } catch (e) {
+      setImportMsg("주제어 채우기 오류: " + ((e && e.message) || "알 수 없는 오류"));
+    }
+  };
+
   /* 기존 기록의 파일명·제목으로 예배 형태 일괄 자동 지정 (진행률·오류 표시) */
   const autoAssignServices = async () => {
     try {
@@ -2083,6 +2181,10 @@ function SermonArchive({ user, profileName, onHome, onLogout }) {
                 <TbIcon name="select" /><span className="tb-label">선택 작업</span>
               </button>
             )}
+            <button className="batch-link tb-btn" data-tip="주제어 자동 채우기" onClick={autoFillTopics}>
+              <TbIcon name="auto" />
+              <span className="tb-label">주제어 자동 채우기</span>
+            </button>
             <button className="batch-link tb-btn" data-tip="예배 형태 자동 지정" aria-label="예배 형태 자동 지정" onClick={autoAssignServices}><TbIcon name="auto" /><span className="tb-label">예배 형태 자동 지정</span></button>
           </p>
           {importMsg && <p className="ai-note" style={{ marginBottom: 12 }}>{importMsg}</p>}
