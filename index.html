@@ -768,6 +768,15 @@ function Landing({ onEnter }) {
   const [isAdmin, setIsAdmin] = useState(false);
   const [openStats, setOpenStats] = useState(true);
 
+  const loadStats = async () => {
+    setStats(null); setStatErr("");
+    try {
+      const res = await sb.rpc("admin_stats");
+      if (res.error) { setStatErr(res.error.message || "알 수 없는 오류"); return; }
+      setStats(res.data);
+    } catch (e) { setStatErr((e && e.message) || "네트워크 오류"); }
+  };
+
   useEffect(() => {
     if (!sb) return;
     (async () => {
@@ -777,9 +786,7 @@ function Landing({ onEnter }) {
         if (!email) return;
         if (email.toLowerCase().trim() !== ADMIN_EMAIL.toLowerCase().trim()) return;
         setIsAdmin(true);
-        const res = await sb.rpc("admin_stats");
-        if (res.error) { setStatErr(res.error.message || "알 수 없는 오류"); return; }
-        setStats(res.data);
+        await loadStats();
       } catch (e) { setStatErr((e && e.message) || "네트워크 오류"); }
     })();
   }, []);
@@ -794,58 +801,71 @@ function Landing({ onEnter }) {
         <p className="landing-sub">나의 설교를 한 눈에</p>
         <button className="enter-btn" onClick={onEnter}>들어가기</button>
       </div>
-      {isAdmin && (
-        <div className={"admin-panel" + (openStats ? " open" : "")}>
-          <button className="admin-toggle" onClick={() => setOpenStats(!openStats)}>
-            관리자 현황 {openStats ? "▲" : "▼"}
-          </button>
-          {openStats && !stats && (
-            <div className="admin-body">
-              <p style={{ color: "rgba(255,255,255,.7)", lineHeight: 1.6 }}>
+      {isAdmin && openStats && (
+        <div className="admin-sheet">
+          <div className="admin-card">
+            <div className="admin-head">
+              <h2>
+                사용자 현황
+                {stats && (
+                  <small>
+                    사용자 {stats.users}명 · 쓰는 중 {(stats.rows || []).filter((r) => r.status === "active").length}명
+                    · 설교 합계 {stats.sermons}편
+                  </small>
+                )}
+              </h2>
+              <div className="admin-head-btns">
+                <button className="ghost" onClick={loadStats}>새로 보기</button>
+                <button className="primary" onClick={() => setOpenStats(false)}>닫기</button>
+              </div>
+            </div>
+
+            {!stats ? (
+              <p className="admin-empty">
                 {statErr
                   ? (/function|schema cache|does not exist/i.test(statErr)
                       ? "Supabase에서 admin_stats 함수를 아직 만들지 않았습니다. SQL을 실행해 주세요."
                       : "불러오지 못했습니다 — " + statErr)
                   : "불러오는 중…"}
               </p>
-            </div>
-          )}
-          {openStats && stats && (
-            <div className="admin-body">
-              <div className="admin-row">
-                <span>가입 사용자</span><b>{stats.users ?? "-"}명</b>
-              </div>
-              <div className="admin-row">
-                <span>최근 7일 가입</span><b>{stats.new_7d ?? 0}명</b>
-              </div>
-              <div className="admin-row">
-                <span>최근 7일 접속</span><b>{stats.active_7d ?? 0}명</b>
-              </div>
-              <div className="admin-row">
-                <span>전체 설교</span><b>{stats.sermons ?? 0}편</b>
-              </div>
-              <div className="admin-row">
-                <span>공동 서재</span><b>{stats.shared ?? 0}편</b>
-              </div>
-              <div className="admin-row">
-                <span>예화</span><b>{stats.illustrations ?? 0}편</b>
-              </div>
-              {Array.isArray(stats.top) && stats.top.length > 0 && (
-                <div className="admin-list">
-                  <b>사용자별 등록</b>
-                  <ul>
-                    {stats.top.map((u, i) => (
-                      <li key={i}>
-                        <span>{u.name || u.email || "이름 없음"}</span>
-                        <em>{u.count}편</em>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-            </div>
-          )}
+            ) : (
+              <>
+                <ul className="admin-rows">
+                  {(stats.rows || []).map((r, i) => (
+                    <li key={i} className="admin-user">
+                      <div className="au-main">
+                        <div className="au-name">
+                          {r.name || "이름 없음"}
+                          <span className={"au-badge " + r.status}>
+                            {r.status === "active" ? "쓰는 중"
+                              : r.status === "idle" ? "멈춘 듯"
+                              : r.status === "empty" ? "시작 안 함" : "안 쓰는 듯"}
+                          </span>
+                        </div>
+                        <div className="au-mail">{r.email}</div>
+                      </div>
+                      <div className="au-stats">
+                        <div><b>{r.sermons}</b><span>설교</span></div>
+                        <div><b>{r.shared}</b><span>공동</span></div>
+                        <div><b>{r.illus}</b><span>예화</span></div>
+                        <div><b>{r.last_seen || "-"}</b><span>마지막 접속</span></div>
+                        <div><b>{r.joined || "-"}</b><span>가입</span></div>
+                        <div><b>{r.size}</b><span>자료 크기</span></div>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+                <p className="admin-legend">
+                  <b>쓰는 중</b>은 최근 2주 안에 접속한 사용자입니다. <b>멈춘 듯</b>은 6주 안,
+                  그보다 오래되면 <b>안 쓰는 듯</b>으로 봅니다. 설교를 한 편도 등록하지 않았으면 <b>시작 안 함</b>입니다.
+                </p>
+              </>
+            )}
+          </div>
         </div>
+      )}
+      {isAdmin && !openStats && (
+        <button className="admin-open" onClick={() => setOpenStats(true)}>관리자 현황</button>
       )}
       <footer className="landing-foot">
         <p>교회이음 · 교회를 잇고, 함께 세웁니다</p>
@@ -3263,25 +3283,39 @@ button.link:hover{text-decoration:underline}
   padding:8px 6px 12px;text-shadow:0 4px 22px rgba(0,0,0,.6);
   border-bottom:2px solid rgba(255,255,255,.35);transition:color .15s, border-color .15s}
 .enter-btn:hover{color:#ffe6a9;border-bottom-color:#ffe6a9}
-.admin-panel{position:absolute;top:18px;right:18px;z-index:3;min-width:210px;
-  background:rgba(8,18,36,.72);border:1px solid rgba(255,255,255,.18);border-radius:14px;
-  backdrop-filter:blur(8px);color:#fff;overflow:hidden}
-.admin-toggle{width:100%;background:none;border:none;color:rgba(255,255,255,.9);
-  font-size:12.5px;font-weight:700;padding:9px 14px;cursor:pointer;font-family:inherit;letter-spacing:.04em}
-.admin-body{padding:4px 14px 12px;font-size:12.5px}
-.admin-row{display:flex;justify-content:space-between;gap:12px;padding:4px 0;
-  color:rgba(255,255,255,.72)}
-.admin-row b{color:#ffe6a9;font-weight:700}
-.admin-list{margin-top:8px;padding-top:8px;border-top:1px solid rgba(255,255,255,.16)}
-.admin-list b{display:block;margin-bottom:5px;color:rgba(255,255,255,.85);font-size:12px}
-.admin-list ul{list-style:none;display:flex;flex-direction:column;gap:3px;max-height:190px;overflow:auto}
-.admin-list li{display:flex;justify-content:space-between;gap:10px;color:rgba(255,255,255,.7)}
-.admin-list em{font-style:normal;color:#ffe6a9}
-.admin-note{position:absolute;top:18px;right:18px;z-index:3;font-size:11px;
-  color:rgba(255,255,255,.5);max-width:240px;text-align:right}
-@media (max-width:640px){
-  .admin-panel{position:static;margin:0 auto 18px;width:min(300px,86vw)}
-  .admin-note{position:static;text-align:center;margin-bottom:12px;max-width:none}
+.admin-sheet{position:absolute;inset:0;z-index:5;display:flex;align-items:flex-start;
+  justify-content:center;padding:28px 18px;overflow:auto;background:rgba(6,14,28,.55)}
+.admin-card{width:min(1080px,100%);background:#fbfaf7;border-radius:18px;
+  box-shadow:0 24px 60px rgba(0,0,0,.45);padding:20px 22px 18px}
+.admin-head{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;margin-bottom:14px}
+.admin-head h2{font-size:20px;font-weight:800;color:var(--ink);display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+.admin-head h2 small{font-size:13px;font-weight:500;color:var(--muted)}
+.admin-head-btns{display:flex;gap:8px;flex-shrink:0}
+.admin-empty{padding:26px 6px;color:var(--muted);font-size:14px}
+.admin-rows{list-style:none;display:flex;flex-direction:column;gap:9px}
+.admin-user{display:flex;align-items:center;justify-content:space-between;gap:16px;
+  background:#fff;border:1px solid var(--line);border-radius:14px;padding:13px 16px;flex-wrap:wrap}
+.au-main{min-width:210px;flex:1}
+.au-name{font-size:16px;font-weight:800;color:var(--ink);display:flex;align-items:center;gap:8px}
+.au-badge{font-size:11.5px;font-weight:700;padding:3px 9px;border-radius:20px}
+.au-badge.active{background:#e6f4e8;color:#2f6b3a}
+.au-badge.idle{background:#fdf1dc;color:#916218}
+.au-badge.stale{background:#f0f0f2;color:#6b6b72}
+.au-badge.empty{background:#eceef1;color:#5d6570}
+.au-mail{margin-top:3px;font-size:13px;color:#7b8794}
+.au-stats{display:flex;gap:20px;flex-wrap:wrap}
+.au-stats div{text-align:center;min-width:52px}
+.au-stats b{display:block;font-size:17px;font-weight:800;color:var(--ink)}
+.au-stats span{font-size:11.5px;color:var(--muted)}
+.admin-legend{margin-top:14px;font-size:12.5px;color:var(--muted);line-height:1.7}
+.admin-legend b{color:var(--ink)}
+.admin-open{position:absolute;top:18px;right:18px;z-index:4;
+  background:rgba(8,18,36,.72);border:1px solid rgba(255,255,255,.22);border-radius:20px;
+  color:#fff;font-size:12.5px;font-weight:700;padding:8px 16px;cursor:pointer;font-family:inherit}
+@media (max-width:760px){
+  .admin-user{align-items:flex-start}
+  .au-stats{gap:14px}
+  .au-stats b{font-size:15px}
 }
 .home-btn{border-color:rgba(168,128,47,.5)!important}
 .landing-foot{position:absolute;left:0;right:0;bottom:22px;z-index:2;text-align:center;
