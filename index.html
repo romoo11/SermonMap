@@ -874,12 +874,13 @@ function AuthGate() {
     <SermonArchive
       user={u}
       profileName={profileName}
+      onHome={() => setEntered(false)}
       onLogout={() => sb.auth.signOut()}
     />
   );
 }
 
-function SermonArchive({ user, profileName, onLogout }) {
+function SermonArchive({ user, profileName, onHome, onLogout }) {
   const [sermons, setSermons] = useState([]);
   const [library, setLibrary] = useState("personal"); /* personal | shared */
   const [saveScope, setSaveScope] = useState("personal");
@@ -1842,6 +1843,7 @@ function SermonArchive({ user, profileName, onLogout }) {
             <button className={view === "seasons" ? "on" : ""} onClick={() => { setSeasonSel(null); setView("seasons"); }}>절기 지도</button>
             <button className={view === "services" ? "on" : ""} onClick={() => { setServiceSel(null); setView("services"); }}>예배 지도</button>
             <button className={view === "illus" ? "on" : ""} onClick={() => { setIllOpenId(null); setView("illus"); }}>예화</button>
+            {onHome && <button className="home-btn" onClick={onHome} title="대문으로">대문</button>}
             <button className="new-btn" onClick={startNew}>+ 새 설교</button>
             <button className="logout-btn" onClick={onLogout} title="로그아웃">{profileName} · 로그아웃</button>
           </nav>
@@ -3270,6 +3272,7 @@ button.link:hover{text-decoration:underline}
   .admin-panel{position:static;margin:0 auto 18px;width:min(300px,86vw)}
   .admin-note{position:static;text-align:center;margin-bottom:12px;max-width:none}
 }
+.home-btn{border-color:rgba(168,128,47,.5)!important}
 .landing-foot{position:absolute;left:0;right:0;bottom:22px;z-index:2;text-align:center;
   color:rgba(255,255,255,.45);font-size:11.5px;line-height:1.85;letter-spacing:.02em}
 @media (max-width:640px){
