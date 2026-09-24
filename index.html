@@ -1577,10 +1577,15 @@ function SermonArchive({ user, profileName, onHome, onLogout }) {
         raw[n] = (raw[n] || 0) + 1;
       });
     });
-    /* 두 편 이하로 쓰인 주제는 묶어서 감춤 */
+    /* 적게 쓰인 주제는 감추고, 대표 주제가 하나도 없는 설교만 '기타'로 모음 */
     const m = {};
+    Object.entries(raw).forEach(([k, v]) => { if (v >= 8) m[k] = v; });
+    const shown = new Set(Object.keys(m));
     let rest = 0;
-    Object.entries(raw).forEach(([k, v]) => { if (v >= 8) m[k] = v; else rest += v; });
+    scoped.forEach((s) => {
+      const has = (s.tags || []).some((t) => shown.has(normTag(t)));
+      if (!has) rest += 1;
+    });
     if (rest) m["기타"] = rest;
     return m;
   }, [scoped]);
@@ -1643,11 +1648,8 @@ function SermonArchive({ user, profileName, onHome, onLogout }) {
     let match;
     if (topicSel.kind === "tag") {
       if (topicSel.name === "기타") {
-        const shown = new Set(Object.keys(tagCounts));
-        match = (s) => (s.tags || []).some((t) => {
-          const n = normTag(t);
-          return n && !shown.has(n);
-        });
+        const shown = new Set(Object.keys(tagCounts).filter((k) => k !== "기타"));
+        match = (s) => !(s.tags || []).some((t) => shown.has(normTag(t)));
       } else {
         match = (s) => (s.tags || []).some((t) => normTag(t) === topicSel.name);
       }
