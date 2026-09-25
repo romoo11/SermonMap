@@ -1430,15 +1430,37 @@ function SermonArchive({ user, profileName, onHome, onLogout }) {
 
   /* 주제별 묶음 (많이 쓰인 주제부터) */
   const illGroups = useMemo(() => {
+    const raw = {};
+    illus.forEach((x) => {
+      const seen = new Set();
+      (x.tags || []).forEach((t) => {
+        const n = normTag(t);
+        if (!n || seen.has(n)) return;
+        seen.add(n);
+        raw[n] = (raw[n] || 0) + 1;
+      });
+    });
     const m = {};
-    illus.forEach((x) => (x.tags || []).forEach((t) => { m[t] = (m[t] || 0) + 1; }));
+    Object.entries(raw).forEach(([k, v]) => { if (v >= 3 || PINNED_TOPICS.has(k)) m[k] = v; });
+    const shown = new Set(Object.keys(m));
+    let rest = 0;
+    illus.forEach((x) => {
+      const has = (x.tags || []).some((t) => shown.has(normTag(t)));
+      if (!has) rest += 1;
+    });
+    if (rest) m["기타"] = rest;
     return Object.entries(m).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], "ko"));
   }, [illus]);
 
   const illFiltered = useMemo(() => {
     const q = illQuery.trim().toLowerCase();
     return illus.filter((x) => {
-      if (illTag !== "전체" && !(x.tags || []).includes(illTag)) return false;
+      if (illTag !== "전체") {
+        if (illTag === "기타") {
+          const shown = new Set(illGroups.map(([t]) => t).filter((t) => t !== "기타"));
+          if ((x.tags || []).some((t) => shown.has(normTag(t)))) return false;
+        } else if (!(x.tags || []).some((t) => normTag(t) === illTag)) return false;
+      }
       if (!q) return true;
       const hay = [x.title, x.body, x.point, x.source, (x.tags || []).join(" "),
         (x.usedIn || []).map((u) => u.title + " " + u.book + " " + u.ref).join(" ")]
@@ -1451,7 +1473,7 @@ function SermonArchive({ user, profileName, onHome, onLogout }) {
       const bd = Math.max(...[0, ...(b.usedIn || []).map((u) => (u.date || "").replace(/\D/g, "") || 0)]);
       return bd - ad;
     });
-  }, [illus, illQuery, illTag, illSort]);
+  }, [illus, illQuery, illTag, illSort, illGroups]);
 
   /* ── 불러오기 ── */
   const fetchAll = async () => {
@@ -2878,7 +2900,12 @@ function SermonArchive({ user, profileName, onHome, onLogout }) {
           {illus.length > 0 && illView === "group" && illTag === "전체" && !illQuery.trim() ? (
             <div className="ill-sections">
               {illGroups.map(([t, n]) => {
-                const items = illus.filter((x) => (x.tags || []).includes(t));
+                const items = t === "기타"
+                  ? illus.filter((x) => {
+                      const shown = new Set(illGroups.map(([g]) => g).filter((g) => g !== "기타"));
+                      return !(x.tags || []).some((tag) => shown.has(normTag(tag)));
+                    })
+                  : illus.filter((x) => (x.tags || []).some((tag) => normTag(tag) === t));
                 return (
                   <section key={t} className="ill-section">
                     <h3 className="ill-section-head">
