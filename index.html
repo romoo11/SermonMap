@@ -183,6 +183,65 @@ const TAG_MERGE = [
 /* 편수가 적어도 지도에 항상 표시할 주제 */
 const PINNED_TOPICS = new Set(["승리"]);
 
+/* 설교 본문에서 핵심 문장을 골라 요약을 만듭니다 (AI 없이 작동) */
+function makeSummary(rec) {
+  let t = String(rec.content || "");
+  if (t.length < 300) return "";
+  /* 성경 구절 블록·머리말 제거 */
+  t = t.replace(/^[\s\S]{0,1200}?(서\s*론|들어가는\s*말)/, "$1");
+  t = t.replace(/\[\d+\]/g, " ").replace(/^\s*\d+\s+/gm, " ");
+  t = t.replace(/[ \t]+/g, " ");
+
+  /* 문장 나누기 */
+  const raw = t.split(/(?<=[.!?])\s+|\n+/).map((s) => s.trim())
+    .filter((s) => s.length >= 25 && s.length <= 220);
+  if (raw.length < 4) return "";
+
+  /* 구간 표시(서론·본론·결론) 위치 */
+  const findIdx = (re) => raw.findIndex((s) => re.test(s));
+  const iIntro = 0;
+  const iBody = Math.max(findIdx(/본\s*론/), Math.floor(raw.length * 0.25));
+  const iEnd = Math.max(findIdx(/결\s*론/), Math.floor(raw.length * 0.72));
+
+  /* 신앙 핵심어가 많은 문장에 점수 */
+  const KEY = ["하나님","주님","예수","말씀","믿음","은혜","기도","사랑","순종","구원",
+    "성령","회개","축복","소망","십자가","감사","성도","우리","삶","마음"];
+  const HINT = ["바랍니다","원합니다","되시기","됩니다","것입니다","해야 합니다","하시기 바랍니다"];
+  const score = (s) => {
+    let n = 0;
+    KEY.forEach((k) => { if (s.includes(k)) n += 2; });
+    HINT.forEach((k) => { if (s.includes(k)) n += 3; });
+    if (/^(오늘|우리|그러므로|사랑하는)/.test(s)) n += 2;
+    if (s.length > 140) n -= 2;
+    return n;
+  };
+  const best = (from, to) => {
+    const seg = raw.slice(Math.max(0, from), Math.min(raw.length, to));
+    if (!seg.length) return null;
+    return seg.map((s) => [s, score(s)]).sort((a, b) => b[1] - a[1])[0][0];
+  };
+
+  const picks = [
+    best(iIntro, Math.max(3, Math.floor(raw.length * 0.18))),
+    best(iBody, iBody + Math.floor(raw.length * 0.2)),
+    best(Math.floor(raw.length * 0.45), Math.floor(raw.length * 0.68)),
+    best(iEnd, raw.length),
+  ].filter(Boolean);
+
+  const seen = new Set();
+  const out = [];
+  picks.forEach((s) => {
+    const k = s.slice(0, 18);
+    if (seen.has(k)) return;
+    seen.add(k);
+    let c = s.replace(/^(서\s*론|본\s*론\s*\d*\.?|결\s*론)\s*[.:]?\s*/, "").trim();
+    c = c.replace(/^["'“”‘’\s]+/, "");
+    if (c && !/[.!?]$/.test(c)) c += ".";
+    if (c.length > 20) out.push(c);
+  });
+  return out.slice(0, 4).join(" ");
+}
+
 /* 설교 내용에서 주제어를 찾아내기 위한 단어 사전 */
 const TOPIC_HINTS = [
   ["기도", ["기도","간구","부르짖","무릎","중보","새벽예배","금식"]],
@@ -1360,6 +1419,8 @@ function SermonArchive({ user, profileName, onHome, onLogout }) {
           note = garbled ? "글자 정보 손상 PDF — 파일명만 저장됨 (원본 hwp 변환 필요)" : "글자를 찾지 못해 파일명만 저장됨";
         }
         if (garbled && !note) note = "글자 정보 손상 PDF — 파일명만 저장됨 (원본 hwp 변환 필요)";
+        if (!rec.summary) { const sm = makeSummary(rec); if (sm) rec.summary = sm; }
+        if (!(rec.tags || []).length) { const tg = guessTopics(rec); if (tg.length) rec.tags = tg; }
         if (!note && !rec.book) note = "본문 말씀을 찾지 못함 — 수정에서 채워주세요";
         const fp = await uploadOriginal(file);
         if (fp) rec.filePath = fp;
@@ -1994,6 +2055,40 @@ function SermonArchive({ user, profileName, onHome, onLogout }) {
     e.target.value = "";
   };
 
+  /* 요약이 비어 있는 기록에 요약 자동 만들기 */
+  const autoFillSummary = async () => {
+    try {
+      const cands = sermons
+        .filter((s) => s.mine !== false && !(s.summary || "").trim())
+        .map((s) => ({ id: s.id, summary: makeSummary(s) }))
+        .filter((x) => x.summary && x.summary.length > 40);
+      if (!cands.length) {
+        setImportMsg("요약을 만들 설교가 없습니다 (요약이 빈 기록이 없거나 내용이 부족합니다).");
+        return;
+      }
+      let done = 0, failMsg = "";
+      const okMap = {};
+      for (let i = 0; i < cands.length; i++) {
+        const c = cands[i];
+        if (i % 5 === 0 || i === cands.length - 1) {
+          setImportMsg("요약 만드는 중… " + (i + 1) + " / " + cands.length + "편 — 완료될 때까지 기다려 주세요");
+        }
+        try {
+          const { error } = await sb.from("sermons").update({ summary: c.summary }).eq("id", c.id);
+          if (error) { if (!failMsg) failMsg = error.message || ""; }
+          else { done++; okMap[c.id] = c.summary; }
+        } catch (e) { if (!failMsg) failMsg = (e && e.message) || "네트워크 오류"; }
+      }
+      setSermons((prev) => prev.map((p) => (okMap[p.id] ? { ...p, summary: okMap[p.id] } : p)));
+      setImportMsg(
+        (done === cands.length ? "완료 — " : "일부만 완료 — ") + done + "편에 요약을 만들었습니다." +
+        (failMsg ? " (실패 원인: " + failMsg + ")" : " 기록에서 확인하고 필요하면 수정해 주세요.")
+      );
+    } catch (e) {
+      setImportMsg("요약 만들기 오류: " + ((e && e.message) || "알 수 없는 오류"));
+    }
+  };
+
   /* 태그가 비어 있는 기록에 주제어 자동 채우기 */
   const autoFillTopics = async () => {
     try {
@@ -2211,6 +2306,10 @@ function SermonArchive({ user, profileName, onHome, onLogout }) {
                 <TbIcon name="select" /><span className="tb-label">선택 작업</span>
               </button>
             )}
+            <button className="batch-link tb-btn" data-tip="요약 자동 만들기" onClick={autoFillSummary}>
+              <TbIcon name="auto" />
+              <span className="tb-label">요약 자동 만들기</span>
+            </button>
             <button className="batch-link tb-btn" data-tip="주제어 자동 채우기" onClick={autoFillTopics}>
               <TbIcon name="auto" />
               <span className="tb-label">주제어 자동 채우기</span>
