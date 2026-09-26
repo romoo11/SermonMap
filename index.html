@@ -2257,11 +2257,12 @@ function SermonArchive({ user, profileName, onHome, onLogout }) {
             <button className={view === "services" ? "on" : ""} onClick={() => { setServiceSel(null); setView("services"); }}>예배</button>
             <button className={view === "illus" ? "on" : ""} onClick={() => { setIllOpenId(null); setView("illus"); }}>예화</button>
             {onHome && <button className="home-btn" onClick={onHome} title="대문으로">대문</button>}
-            <label className="new-btn add-btn" title="설교 파일(한글·PDF·워드)이나 백업(JSON) 불러오기"
-              style={{ cursor: "pointer" }}>
+            <button className="add-btn" title="설교 파일(한글·PDF·워드)이나 백업(JSON) 불러오기"
+              onClick={() => { const el = document.getElementById("add-file-input"); if (el) el.click(); }}>
               불러오기
-              <input type="file" multiple accept=".hwpx,.hwp,.pdf,.docx,.txt,.json" hidden onChange={handleAddFiles} />
-            </label>
+            </button>
+            <input id="add-file-input" type="file" multiple
+              accept=".hwpx,.hwp,.pdf,.docx,.txt,.json" hidden onChange={handleAddFiles} />
             <button className="new-btn" onClick={startNew}>새로 쓰기</button>
             <button className="logout-btn" onClick={onLogout} title="로그아웃">로그아웃</button>
           </nav>
@@ -2272,6 +2273,21 @@ function SermonArchive({ user, profileName, onHome, onLogout }) {
         <div className="lib-inner">
           <button className={library === "personal" ? "on" : ""} onClick={() => setLibrary("personal")}>내 서재</button>
           <button className={library === "shared" ? "on" : ""} onClick={() => setLibrary("shared")}>공동 서재</button>
+          <span className="lib-tools">
+            <button className="batch-link tb-btn" data-tip="백업 파일로 내려받기" aria-label="백업"
+              onClick={exportData} disabled={!scoped.length}>
+              <span className="tb-label">백업</span>
+            </button>
+            {!selMode && (
+              <button className="batch-link tb-btn" data-tip="여러 편 골라 삭제·예배 지정" disabled={!scoped.length}
+                onClick={() => { setSelMode(true); setSelIds(new Set()); setOpenId(null); }}>
+                <span className="tb-label">정리</span>
+              </button>
+            )}
+            <button className="batch-link tb-btn" data-tip="요약·주제어·예배 형태를 한 번에 채웁니다" onClick={runAiAnalyze}>
+              <span className="tb-label">AI 분석</span>
+            </button>
+          </span>
         </div>
       </div>
 
@@ -2324,18 +2340,6 @@ function SermonArchive({ user, profileName, onHome, onLogout }) {
             {scoped.length === 0
               ? null
               : `${filtered.length}편 표시 · ${library === "personal" ? "내 서재" : "공동 서재"} ${scoped.length}편`}
-            <button className="batch-link tb-btn" data-tip="백업 파일로 내려받기" aria-label="백업" onClick={exportData} disabled={!scoped.length}>
-              <span className="tb-label">백업</span>
-            </button>
-            {!selMode && (
-              <button className="batch-link tb-btn" data-tip="선택 작업 (삭제·예배 지정)" aria-label="선택 작업 (삭제·예배 지정)" disabled={!scoped.length}
-                onClick={() => { setSelMode(true); setSelIds(new Set()); setOpenId(null); }}>
-                <span className="tb-label">정리</span>
-              </button>
-            )}
-            <button className="batch-link tb-btn" data-tip="요약·주제어·예배 형태를 한 번에 채웁니다" onClick={runAiAnalyze}>
-              <span className="tb-label">AI 분석</span>
-            </button>
           </p>
           {importMsg && <p className="ai-note" style={{ marginBottom: 12 }}>{importMsg}</p>}
           {selMode && (
@@ -3365,9 +3369,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 .tabs .new-btn{background:linear-gradient(#c9a44e,#8f6d24);color:#fff;font-weight:700;
   box-shadow:0 -4px 9px rgba(0,0,0,.24) inset, 0 5px 12px rgba(120,88,20,.45), 0 1px 2px rgba(0,0,0,.2)}
 .tabs .home-btn{background:linear-gradient(#46608a,#2d4265)}
-.tabs .add-btn{background:linear-gradient(#5b7fae,#35507a);color:#fff;font-weight:700;
-  display:inline-flex;align-items:center;
-  box-shadow:0 -4px 8px rgba(0,0,0,.22) inset, 0 4px 9px rgba(0,0,0,.3), 0 1px 2px rgba(0,0,0,.22)}
+.tabs .add-btn{background:linear-gradient(#5b7fae,#35507a)!important;color:#fff!important;font-weight:700}
 
 .banner{max-width:960px;margin:12px auto 0;padding:10px 16px;font-size:14px;
   background:var(--accent-soft);border:1px solid var(--accent);border-radius:8px;width:calc(100% - 36px)}
@@ -3670,7 +3672,10 @@ button.link:hover{text-decoration:underline}
 
 /* 서재 전환 */
 .lib-bar{background:#fff;border-bottom:1px solid var(--line)}
-.lib-inner{max-width:960px;margin:0 auto;padding:10px 18px;display:flex;gap:8px}
+.lib-inner{max-width:960px;margin:0 auto;padding:10px 18px;display:flex;gap:8px;
+  align-items:center;flex-wrap:wrap}
+.lib-tools{display:inline-flex;gap:8px;margin-left:auto;flex-wrap:wrap}
+@media (max-width:640px){ .lib-tools{margin-left:0} }
 .lib-inner button{position:relative;isolation:isolate;overflow:hidden;flex:0 0 auto;border:none;
   background:linear-gradient(#f4f6f9,#dfe5ec);color:#5b6675;border-radius:22px;
   padding:9px 24px;font-size:14px;cursor:pointer;
