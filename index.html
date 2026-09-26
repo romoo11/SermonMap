@@ -1187,6 +1187,7 @@ function SermonArchive({ user, profileName, onHome, onLogout }) {
   const [fState, setFState] = useState("전체"); /* 전체 | 미분석 */
   const [fService, setFService] = useState("전체");
   const [openId, setOpenId] = useState(null);
+  const [menuOpen, setMenuOpen] = useState(false);
   const [mapBook, setMapBook] = useState(null);
   const [mapOpenId, setMapOpenId] = useState(null);
   useEffect(() => {
@@ -2243,13 +2244,57 @@ function SermonArchive({ user, profileName, onHome, onLogout }) {
       <header className="masthead">
         <div className="masthead-inner">
           <div className="brand">
-            <span className="brand-mark">≡</span>
-            <div>
+            <button className="shelf-btn" onClick={() => setMenuOpen(!menuOpen)}
+              title="작업 메뉴" aria-label="작업 메뉴" aria-expanded={menuOpen}>
+              <svg viewBox="0 0 48 48" width="34" height="34" aria-hidden="true">
+                <g fill="#e8c98a">
+                  <rect x="5" y="9" width="38" height="3" rx="1.2"/>
+                  <rect x="5" y="22" width="38" height="3" rx="1.2"/>
+                  <rect x="5" y="35" width="38" height="3" rx="1.2"/>
+                </g>
+                <g fill="#ffffff" opacity=".92">
+                  <rect x="9" y="13.5" width="3.4" height="8.5" rx="1"/>
+                  <rect x="14" y="15" width="3" height="7" rx="1"/>
+                  <rect x="18.5" y="12.5" width="3.8" height="9.5" rx="1"/>
+                  <rect x="23.5" y="15.5" width="3" height="6.5" rx="1"/>
+                  <rect x="28" y="13" width="3.6" height="9" rx="1"/>
+                  <rect x="33" y="16" width="3" height="6" rx="1"/>
+                  <rect x="37.5" y="14" width="3.2" height="8" rx="1"/>
+                  <rect x="9" y="26.5" width="3.2" height="8.5" rx="1"/>
+                  <rect x="13.5" y="28" width="3.6" height="7" rx="1"/>
+                  <rect x="18.5" y="25.5" width="3" height="9.5" rx="1"/>
+                  <rect x="23" y="28.5" width="3.6" height="6.5" rx="1"/>
+                  <rect x="28" y="26" width="3" height="9" rx="1"/>
+                  <rect x="32.5" y="29" width="3.6" height="6" rx="1"/>
+                  <rect x="37.5" y="27" width="3.2" height="8" rx="1"/>
+                </g>
+              </svg>
+            </button>
+            <div className="brand-text">
               <h1>설교 서재</h1>
               <p className="brand-sub">말씀의 기록과 흐름을 한 곳에</p>
             </div>
+            <button className="logout-btn brand-logout" onClick={onLogout} title="로그아웃">로그아웃</button>
           </div>
+
+          {menuOpen && (
+            <div className="shelf-menu">
+              <button onClick={() => { setMenuOpen(false); startNew(); }}>새로 쓰기</button>
+              <button onClick={() => { setMenuOpen(false); const el = document.getElementById("add-file-input"); if (el) el.click(); }}>
+                불러오기
+              </button>
+              <button disabled={!scoped.length} onClick={() => { setMenuOpen(false); exportData(); }}>백업</button>
+              <button disabled={!scoped.length}
+                onClick={() => { setMenuOpen(false); setSelMode(true); setSelIds(new Set()); setOpenId(null); }}>
+                정리
+              </button>
+              <button onClick={() => { setMenuOpen(false); runAiAnalyze(); }}>AI 분석</button>
+            </div>
+          )}
+          <input id="add-file-input" type="file" multiple
+            accept=".hwpx,.hwp,.pdf,.docx,.txt,.json" hidden onChange={handleAddFiles} />
           <nav className="tabs" role="tablist">
+            <span className="tab-group">
             <button className={view === "list" ? "on" : ""} onClick={() => setView("list")}>기록</button>
             <button className={view === "map" ? "on" : ""} onClick={() => { setMapBook(null); setView("map"); }}>성경 지도</button>
             <button className={view === "topics" ? "on" : ""} onClick={() => { setTopicSel(null); setView("topics"); }}>주제 지도</button>
@@ -2257,14 +2302,7 @@ function SermonArchive({ user, profileName, onHome, onLogout }) {
             <button className={view === "services" ? "on" : ""} onClick={() => { setServiceSel(null); setView("services"); }}>예배</button>
             <button className={view === "illus" ? "on" : ""} onClick={() => { setIllOpenId(null); setView("illus"); }}>예화</button>
             {onHome && <button className="home-btn" onClick={onHome} title="대문으로">대문</button>}
-            <button className="add-btn" title="설교 파일(한글·PDF·워드)이나 백업(JSON) 불러오기"
-              onClick={() => { const el = document.getElementById("add-file-input"); if (el) el.click(); }}>
-              불러오기
-            </button>
-            <input id="add-file-input" type="file" multiple
-              accept=".hwpx,.hwp,.pdf,.docx,.txt,.json" hidden onChange={handleAddFiles} />
-            <button className="new-btn" onClick={startNew}>새로 쓰기</button>
-            <button className="logout-btn" onClick={onLogout} title="로그아웃">로그아웃</button>
+            </span>
           </nav>
         </div>
       </header>
@@ -2273,21 +2311,6 @@ function SermonArchive({ user, profileName, onHome, onLogout }) {
         <div className="lib-inner">
           <button className={library === "personal" ? "on" : ""} onClick={() => setLibrary("personal")}>내 서재</button>
           <button className={library === "shared" ? "on" : ""} onClick={() => setLibrary("shared")}>공동 서재</button>
-          <span className="lib-tools">
-            <button className="batch-link tb-btn" data-tip="백업 파일로 내려받기" aria-label="백업"
-              onClick={exportData} disabled={!scoped.length}>
-              <span className="tb-label">백업</span>
-            </button>
-            {!selMode && (
-              <button className="batch-link tb-btn" data-tip="여러 편 골라 삭제·예배 지정" disabled={!scoped.length}
-                onClick={() => { setSelMode(true); setSelIds(new Set()); setOpenId(null); }}>
-                <span className="tb-label">정리</span>
-              </button>
-            )}
-            <button className="batch-link tb-btn" data-tip="요약·주제어·예배 형태를 한 번에 채웁니다" onClick={runAiAnalyze}>
-              <span className="tb-label">AI 분석</span>
-            </button>
-          </span>
         </div>
       </div>
 
@@ -3351,7 +3374,38 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 .brand-mark{font-size:26px;color:var(--accent);line-height:1}
 .brand h1{font-family:'Noto Serif KR',serif;font-size:21px;font-weight:700;letter-spacing:.02em}
 .brand-sub{font-size:12px;color:#aab6c4;margin-top:2px}
-.tabs{display:flex;gap:9px;align-items:center;flex-wrap:wrap}
+.tabs{display:flex;gap:10px;align-items:center;flex-wrap:wrap;row-gap:8px}
+.tab-group{display:inline-flex;gap:7px;align-items:center;flex-wrap:wrap}
+.tab-actions{margin-left:auto;padding-left:14px;border-left:1px solid rgba(255,255,255,.14)}
+.brand{display:flex;align-items:center;gap:12px}
+.brand-text{flex:1;min-width:0}
+.brand-logout{margin-left:auto;flex-shrink:0}
+.shelf-btn{background:linear-gradient(#35507a,#1d2f4d);border:none;border-radius:13px;
+  padding:7px 8px 5px;cursor:pointer;line-height:0;flex-shrink:0;position:relative;overflow:hidden;
+  box-shadow:0 -3px 7px rgba(0,0,0,.28) inset, 0 4px 9px rgba(0,0,0,.34);
+  transition:transform .15s, filter .15s}
+.shelf-btn::before{content:"";position:absolute;inset:0;height:52%;border-radius:inherit;
+  border-bottom-left-radius:60% 100%;border-bottom-right-radius:60% 100%;pointer-events:none;
+  background:linear-gradient(to bottom, rgba(255,255,255,.3), rgba(255,255,255,0))}
+.shelf-btn:hover{transform:translateY(-1.5px);filter:brightness(1.12)}
+.shelf-btn:active{transform:translateY(1px)}
+.shelf-menu{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0 2px;padding:10px 12px;
+  background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.14);border-radius:14px}
+.shelf-menu button{background:linear-gradient(#3f5a80,#26395a);border:none;color:#fff;
+  font-weight:700;font-size:13px;padding:9px 18px;border-radius:18px;cursor:pointer;
+  font-family:inherit;position:relative;overflow:hidden;
+  box-shadow:0 -4px 8px rgba(0,0,0,.24) inset, 0 4px 9px rgba(0,0,0,.3)}
+.shelf-menu button::before{content:"";position:absolute;inset:0;height:52%;border-radius:inherit;
+  border-bottom-left-radius:60% 100%;border-bottom-right-radius:60% 100%;pointer-events:none;
+  background:linear-gradient(to bottom, rgba(255,255,255,.3), rgba(255,255,255,0))}
+.shelf-menu button:first-child{background:linear-gradient(#c9a44e,#8f6d24)}
+.shelf-menu button:hover{filter:brightness(1.12)}
+.shelf-menu button:disabled{opacity:.45;cursor:default}
+@media (max-width:640px){
+  .shelf-menu{gap:6px;padding:9px 10px}
+  .shelf-menu button{flex:1 1 30%;padding:8px 6px;font-size:12px}
+  .brand-logout{font-size:11.5px}
+}
 .tabs button{position:relative;isolation:isolate;overflow:hidden;
   background:linear-gradient(#3a5578,#2a3f5c);border:none;color:#e6ecf4;
   padding:9px 18px;border-radius:22px;font-size:14px;cursor:pointer;
@@ -3596,17 +3650,28 @@ button.link:hover{text-decoration:underline}
   background:linear-gradient(to bottom, rgba(255,255,255,.45), rgba(255,255,255,0))}
 .spine-seg:hover{filter:brightness(1.08)}
 @media (max-width:640px){
-  /* 상단 메뉴 — 작고 촘촘하게 */
-  .tabs{gap:5px}
-  .tabs button{padding:6px 11px;font-size:12.5px;border-radius:16px}
+  /* 상단 메뉴 — 두 줄로 가지런히 */
+  .tabs{gap:6px;flex-direction:column;align-items:stretch}
+  .tab-group{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+  .tab-actions{margin-left:0;padding-left:0;border-left:none;
+    padding-top:7px;border-top:1px solid rgba(255,255,255,.14)}
+  .tabs button,.tabs .add-btn{width:100%;text-align:center;justify-content:center}
+  .tabs button{padding:8px 6px;font-size:12.5px;border-radius:14px}
   .brand h1{font-size:19px}
   .brand-sub{font-size:11px}
   header .top{padding:10px 12px 9px}
 
-  /* 서재 전환 + 작업 단추 한 줄로 */
-  .lib-inner{padding:8px 12px;gap:5px}
-  .lib-inner button{padding:6px 13px;font-size:12.5px;border-radius:16px}
-  .lib-tools{margin-left:auto;gap:5px}
+  /* 서재 전환 + 작업 단추 — 한 줄에 다섯 개 */
+  .lib-inner{padding:8px 10px!important;gap:5px!important;flex-wrap:nowrap!important;
+    display:flex!important;align-items:center!important}
+  .lib-inner > button{padding:7px 4px!important;font-size:11.5px!important;
+    border-radius:13px!important;flex:1 1 0!important;min-width:0!important;white-space:nowrap}
+  .lib-tools{margin-left:0!important;gap:5px!important;display:flex!important;
+    flex:1.6 1 0!important;min-width:0!important}
+  .lib-tools .tb-btn{flex:1 1 0!important;min-width:0!important;
+    padding:7px 4px!important;font-size:11.5px!important;border-radius:13px!important;
+    white-space:nowrap;text-align:center;justify-content:center}
+  .lib-tools .tb-label{font-size:11.5px!important}
   .tb-btn{padding:6px 12px!important;font-size:12.5px!important;border-radius:16px!important}
   .tb-btn .tb-label{font-size:12.5px}
 
