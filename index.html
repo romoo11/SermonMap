@@ -1968,18 +1968,57 @@ function SermonArchive({ user, profileName, onHome, onLogout }) {
     const files = Array.from(e.target.files || []);
     e.target.value = "";
     if (!files.length) return;
-    const jsons = files.filter((f) => /\.json$/i.test(f.name));
-    const docs = files.filter((f) => !/\.json$/i.test(f.name));
-    if (jsons.length) {
-      for (const f of jsons) {
-        await importData({ target: { files: [f], value: "" } });
-      }
+
+    const norm = (x) => { const s = x || ""; return (s.normalize ? s.normalize("NFC") : s).trim(); };
+    const baseOf = (x) => norm(x).replace(/\.[^.]+$/, "");
+
+    const jsons = [], links = [], news = [];
+    files.forEach((f) => {
+      if (/\.json$/i.test(f.name)) { jsons.push(f); return; }
+      /* 같은 이름의 설교가 이미 있으면 원문 연결로, 없으면 새 설교로 */
+      const hit = sermons.find((s) => s.mine !== false && s.fileName &&
+        baseOf(s.fileName) === baseOf(f.name));
+      if (hit && !hit.filePath) links.push([f, hit]);
+      else if (hit && hit.filePath) links.push([f, hit]);  /* 다시 올리면 교체 */
+      else news.push(f);
+    });
+
+    /* 1) 백업/가져오기 파일 */
+    for (const f of jsons) {
+      await importData({ target: { files: [f], value: "" } });
     }
-    if (docs.length) {
+
+    /* 2) 이미 있는 설교의 원문 연결 */
+    if (links.length) {
+      let ok = 0, failMsg = "";
+      for (let i = 0; i < links.length; i++) {
+        const [f, rec] = links[i];
+        setImportMsg("원문 연결 중… " + (i + 1) + " / " + links.length + "개");
+        const fp = await uploadOriginal(f);
+        if (!fp) { if (!failMsg) failMsg = "파일 올리기 실패"; continue; }
+        try {
+          const { error } = await sb.from("sermons").update({ file_path: fp }).eq("id", rec.id);
+          if (error) { if (!failMsg) failMsg = error.message || ""; }
+          else {
+            ok++;
+            setSermons((prev) => prev.map((p) => (p.id === rec.id ? { ...p, filePath: fp } : p)));
+          }
+        } catch (err) { if (!failMsg) failMsg = (err && err.message) || "네트워크 오류"; }
+      }
+      setImportMsg(
+        ok + "개 설교에 원문을 연결했습니다. 카드를 열면 '원문 PDF 보기'가 나타납니다." +
+        (failMsg ? " (일부 실패: " + failMsg + ")" : "")
+      );
+    }
+
+    /* 3) 새 설교 등록 */
+    if (news.length) {
       setBatchItems([]);
       setBatchDone(false);
       setView("batch");
-      setTimeout(() => runBatch(docs), 60);
+      setTimeout(() => runBatch(news), 60);
+    } else if (!links.length && !jsons.length) {
+      setImportMsg("처리할 파일이 없습니다.");
     }
   };
 
