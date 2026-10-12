@@ -1,5 +1,5 @@
-/* 설교 서재 - 설치용 서비스워커 */
-const CACHE = "sermon-archive-v1";
+/* 설교이음 - 설치용 서비스워커 */
+const CACHE = "sermon-ieum-v2";
 self.addEventListener("install", (e) => { self.skipWaiting(); });
 self.addEventListener("activate", (e) => { e.waitUntil(self.clients.claim()); });
 self.addEventListener("fetch", (e) => {
